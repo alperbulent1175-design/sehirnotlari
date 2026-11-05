@@ -927,13 +927,17 @@ document.getElementById('modalEl').addEventListener('touchend',e=>{if(e.changedT
 // Read-only startup snapshot: compare Room data without replacing localStorage.
 // This deliberately avoids resurrecting notes deleted through the legacy UI.
 let roomPilotSnapshot=null;
-window.onRoomNotesError=function(message){
+let roomPilotReadTimer=null;
+function roomPilotReadFailed(message){
+  if(roomPilotReadTimer!==null){clearTimeout(roomPilotReadTimer);roomPilotReadTimer=null;}
   console.error('Room pilot snapshot failed:',message);
   toast('⚠️ Room verileri okunamadı; mevcut notlar korunuyor');
-};
+}
+window.onRoomNotesError=roomPilotReadFailed;
 window.onRoomNotesReady=function(snapshot){
+  if(roomPilotReadTimer!==null){clearTimeout(roomPilotReadTimer);roomPilotReadTimer=null;}
   if(!snapshot || typeof snapshot!=='object' || Array.isArray(snapshot)){
-    console.warn('Room pilot: invalid snapshot');return;
+    roomPilotReadFailed('Invalid Room snapshot');return;
   }
   roomPilotSnapshot=snapshot;
   // Compare without modifying the legacy DB; useful before enabling Room hydration.
@@ -953,8 +957,11 @@ window.onRoomNotesReady=function(snapshot){
 };
 function requestRoomPilotSnapshot(){
   if(window.Android && typeof window.Android.requestRoomNotes==='function'){
-    try{window.Android.requestRoomNotes();}
-    catch(e){console.warn('Room pilot snapshot request failed',e);}
+    try{
+      if(roomPilotReadTimer!==null)clearTimeout(roomPilotReadTimer);
+      roomPilotReadTimer=setTimeout(()=>roomPilotReadFailed('Room read timed out'),10000);
+      window.Android.requestRoomNotes();
+    }catch(e){roomPilotReadFailed(e.message||'Room bridge unavailable');}
   }
 }
 window.addEventListener('load',requestRoomPilotSnapshot);
