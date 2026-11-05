@@ -1125,7 +1125,7 @@ function importFromCloud(json) {
             if (!DB[c]) DB[c] = [];
             const ids = new Set(DB[c].map(n => n.id));
             ns.forEach(n => {
-                if (!ids.has(n.id)) { DB[c].push(n); cnt++; }
+                if (!ids.has(n.id)) { DB[c].push(n); mirrorNewNoteToRoom(c,n); cnt++; }
             });
         });
         sv(); updateStyles(); updateSum();
