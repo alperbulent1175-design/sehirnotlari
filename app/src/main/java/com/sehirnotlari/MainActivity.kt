@@ -1,5 +1,10 @@
 package com.sehirnotlari
 
+import com.sehirnotlari.data.CityNotesDatabase
+import com.sehirnotlari.data.NoteEntity
+import org.json.JSONArray
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlarmManager
@@ -47,6 +52,8 @@ import java.util.TimeZone
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
+    private val roomWriteMutex = Mutex()
+    private val notesDatabase by lazy { CityNotesDatabase.get(applicationContext) }
     private lateinit var releaseUpdater: GithubReleaseUpdater
     private var selectedCityForPdf: String? = null
 
@@ -279,6 +286,66 @@ class MainActivity : AppCompatActivity() {
     }
 
     inner class WebAppInterface(private val mContext: Context) {
+        // Explicit bridge: UI will be switched to Room only after startup hydration is tested.
+        @JavascriptInterface
+        fun saveNotesToRoom(json: String) {
+            if (json.length > 2_000_000) return
+            lifecycleScope.launch(Dispatchers.IO) {
+                roomWriteMutex.withLock {
+                    try {
+                        val cities = JSONObject(json)
+                        val dao = notesDatabase.notes()
+                        val keys = cities.keys()
+                        while (keys.hasNext()) {
+                            val city = keys.next()
+                            val notes = cities.optJSONArray(city) ?: continue
+                            for (i in 0 until notes.length()) {
+                                val item = notes.optJSONObject(i) ?: continue
+                                val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
+                                dao.upsert(NoteEntity(
+                                    id = id, city = city,
+                                    title = item.optString("title"),
+                                    content = item.optString("content"),
+                                    category = item.optString("category", "Genel"),
+                                    star = item.optInt("star").coerceIn(0, 5),
+                                    color = item.optString("color"),
+                                    favorite = item.optBoolean("fav")
+                                ))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("SehirNotlari", "Room import failed", e)
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun requestRoomNotes() {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val result = JSONObject()
+                    notesDatabase.notes().allActive().forEach { note ->
+                        val arr = result.optJSONArray(note.city) ?: JSONArray().also { result.put(note.city, it) }
+                        arr.put(JSONObject().apply {
+                            put("id", note.id)
+                            put("title", note.title)
+                            put("content", note.content)
+                            put("category", note.category)
+                            put("star", note.star)
+                            put("color", note.color)
+                            put("fav", note.favorite)
+                        })
+                    }
+                    withContext(Dispatchers.Main) {
+                        webView.evaluateJavascript("window.onRoomNotesReady && window.onRoomNotesReady(${result});", null)
+                    }
+                } catch (e: Exception) {
+                    Log.e("SehirNotlari", "Room read failed", e)
+                }
+            }
+        }
+
 
         @JavascriptInterface
         fun getCityGuide(city: String) {
