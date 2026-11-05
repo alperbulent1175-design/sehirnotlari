@@ -6,12 +6,10 @@ import com.sehirnotlari.data.RoomBridgeScripts
 import com.sehirnotlari.data.RoomNoteDraft
 import com.sehirnotlari.data.RoomNoteImportStore
 import com.sehirnotlari.data.RoomNoteWriteSequencer
-import com.sehirnotlari.data.RoomNoteWriteStore
 import com.sehirnotlari.data.toBridgeError
 import com.sehirnotlari.data.toBridgeSuccess
 import androidx.room.withTransaction
 import org.json.JSONArray
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import android.Manifest
 import android.annotation.SuppressLint
@@ -60,14 +58,8 @@ import java.util.TimeZone
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
-    private val roomWriteMutex = Mutex()
     private val notesDatabase by lazy { CityNotesDatabase.get(applicationContext) }
-    private val noteWriteSequencer by lazy {
-        RoomNoteWriteSequencer(
-            store = RoomNoteWriteStore(notesDatabase.notes()),
-            mutex = roomWriteMutex,
-        )
-    }
+    private val noteWriteSequencer by lazy { RoomNoteWriteSequencer.shared(notesDatabase.notes()) }
     private lateinit var releaseUpdater: GithubReleaseUpdater
     private var selectedCityForPdf: String? = null
 
@@ -299,45 +291,42 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    // Room writes run in a process scope; a recreated activity's page no longer awaits the old result.
+    private fun postRoomResult(script: String) {
+        runOnUiThread {
+            if (!isDestroyed && ::webView.isInitialized) webView.evaluateJavascript(script, null)
+        }
+    }
+
     inner class WebAppInterface(private val mContext: Context) {
         // Explicit bridge: UI will be switched to Room only after startup hydration is tested.
         @JavascriptInterface
         fun saveNotesToRoom(json: String) {
             // Legacy import remains opt-in. The WebView does not invoke it automatically.
             LegacyRoomImporter.oversizedPayloadMessage(json)?.let { message ->
-                runOnUiThread {
-                    webView.evaluateJavascript(RoomBridgeScripts.importResult(false, 0, 0, message), null)
-                }
+                postRoomResult(RoomBridgeScripts.importResult(false, 0, 0, message))
                 return
             }
-            lifecycleScope.launch(Dispatchers.IO) {
+            val sequencer = noteWriteSequencer
+            RoomNoteWriteSequencer.writeScope.launch {
                 var inserted = 0
                 var skipped = 0
                 try {
-                    roomWriteMutex.withLock {
+                    sequencer.mutex.withLock {
                         notesDatabase.withTransaction {
                             val outcome = LegacyRoomImporter.importOrThrow(
                                 json,
-                                RoomNoteImportStore(notesDatabase.notes())
+                                RoomNoteImportStore(notesDatabase.notes()),
+                                stamp = sequencer::nextTicket
                             )
                             inserted = outcome.inserted
                             skipped = outcome.skipped
                         }
                     }
-                    withContext(Dispatchers.Main) {
-                        webView.evaluateJavascript(
-                            RoomBridgeScripts.importResult(true, inserted, skipped, null),
-                            null
-                        )
-                    }
+                    postRoomResult(RoomBridgeScripts.importResult(true, inserted, skipped, null))
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Room import failed", e)
-                    withContext(Dispatchers.Main) {
-                        webView.evaluateJavascript(
-                            RoomBridgeScripts.importResult(false, 0, 0, e.message ?: "Room import failed"),
-                            null
-                        )
-                    }
+                    postRoomResult(RoomBridgeScripts.importResult(false, 0, 0, e.message ?: "Room import failed"))
                 }
             }
         }
@@ -346,24 +335,15 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun deleteRoomNote(city: String, id: String, requestId: String) {
             if (city.isBlank() || id.isBlank() || requestId.isBlank()) return
-            val ticket = noteWriteSequencer.nextTicket()
-            lifecycleScope.launch(Dispatchers.IO) {
+            val sequencer = noteWriteSequencer
+            val ticket = sequencer.nextTicket()
+            RoomNoteWriteSequencer.writeScope.launch {
                 try {
-                    val ack = noteWriteSequencer.delete(city, id, ticket)
-                    withContext(Dispatchers.Main) {
-                        webView.evaluateJavascript(
-                            RoomBridgeScripts.deleteResult(requestId, ack.toBridgeSuccess(), ack.toBridgeError()),
-                            null
-                        )
-                    }
+                    val ack = sequencer.delete(city, id, ticket, requestId)
+                    postRoomResult(RoomBridgeScripts.deleteResult(requestId, ack.toBridgeSuccess(), ack.toBridgeError()))
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Room delete failed", e)
-                    withContext(Dispatchers.Main) {
-                        webView.evaluateJavascript(
-                            RoomBridgeScripts.deleteResult(requestId, false, e.message ?: "Room delete failed"),
-                            null
-                        )
-                    }
+                    postRoomResult(RoomBridgeScripts.deleteResult(requestId, false, e.message ?: "Room delete failed"))
                 }
             }
         }
@@ -373,13 +353,14 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun upsertRoomNote(city: String, noteJson: String, requestId: String) {
             if (city.isBlank() || city.length > 120 || noteJson.length > 100_000 || requestId.length > 100) return
-            val ticket = noteWriteSequencer.nextTicket()
-            lifecycleScope.launch(Dispatchers.IO) {
+            val sequencer = noteWriteSequencer
+            val ticket = sequencer.nextTicket()
+            RoomNoteWriteSequencer.writeScope.launch {
                 try {
                     val item = JSONObject(noteJson)
                     val id = item.optString("id").takeIf { it.isNotBlank() }
                         ?: throw IllegalArgumentException("Missing note id")
-                    val ack = noteWriteSequencer.upsert(
+                    val ack = sequencer.upsert(
                         city,
                         id,
                         RoomNoteDraft(
@@ -391,22 +372,13 @@ class MainActivity : AppCompatActivity() {
                             favorite = item.optBoolean("fav"),
                             dateLabel = item.optString("date")
                         ),
-                        ticket
+                        ticket,
+                        requestId.takeIf { it.isNotBlank() }
                     )
-                    withContext(Dispatchers.Main) {
-                        webView.evaluateJavascript(
-                            RoomBridgeScripts.writeResult(requestId, ack.toBridgeSuccess(), ack.toBridgeError()),
-                            null
-                        )
-                    }
+                    postRoomResult(RoomBridgeScripts.writeResult(requestId, ack.toBridgeSuccess(), ack.toBridgeError()))
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Room note upsert failed", e)
-                    withContext(Dispatchers.Main) {
-                        webView.evaluateJavascript(
-                            RoomBridgeScripts.writeResult(requestId, false, e.message ?: "Room write failed"),
-                            null
-                        )
-                    }
+                    postRoomResult(RoomBridgeScripts.writeResult(requestId, false, e.message ?: "Room write failed"))
                 }
             }
         }

@@ -21,6 +21,14 @@ class RoomMigrationGuardTest {
         assertTrue(source.contains("city_notes.db"))
     }
 
+    @Test
+    fun roomWritesUseProcessWideSequencer() {
+        val source = sourceFile("src/main/java/com/sehirnotlari/MainActivity.kt").readText()
+        assertTrue(source.contains("RoomNoteWriteSequencer.shared("))
+        assertTrue(source.contains("RoomNoteWriteSequencer.writeScope.launch"))
+        assertFalse(source.contains("roomWriteMutex"))
+    }
+
     private fun sourceFile(relative: String): File {
         val candidates = listOf(File(relative), File("app/$relative"))
         return candidates.first { it.isFile }

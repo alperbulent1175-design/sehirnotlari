@@ -25,7 +25,11 @@ object LegacyRoomImporter {
     fun oversizedPayloadMessage(json: String): String? =
         if (json.length > MAX_PAYLOAD_CHARS) "Import payload too large" else null
 
-    suspend fun importOrThrow(json: String, store: NoteImportStore): Outcome {
+    suspend fun importOrThrow(
+        json: String,
+        store: NoteImportStore,
+        stamp: () -> Long = { System.currentTimeMillis() },
+    ): Outcome {
         val cities = try {
             JSONObject(json)
         } catch (_: Exception) {
@@ -56,6 +60,7 @@ object LegacyRoomImporter {
                     skipped++
                     continue
                 }
+                val time = stamp()
                 store.upsert(
                     NoteEntity(
                         id = key,
@@ -66,7 +71,9 @@ object LegacyRoomImporter {
                         star = item.optInt("star").coerceIn(0, 5),
                         color = item.optString("color"),
                         favorite = item.optBoolean("fav"),
-                        dateLabel = item.optString("date")
+                        dateLabel = item.optString("date"),
+                        createdAt = time,
+                        updatedAt = time
                     )
                 )
                 inserted++

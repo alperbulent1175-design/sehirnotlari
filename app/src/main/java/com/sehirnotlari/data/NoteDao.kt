@@ -14,6 +14,10 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE deletedAt IS NULL ORDER BY updatedAt DESC")
     suspend fun allActive(): List<NoteEntity>
 
+    // Blocking on purpose: seeds the write ticket clock from the JavaBridge thread, never main.
+    @Query("SELECT MAX(updatedAt) FROM notes")
+    fun maxUpdatedAt(): Long?
+
     @Query("SELECT * FROM notes WHERE deletedAt IS NULL ORDER BY updatedAt DESC")
     fun observeActive(): Flow<List<NoteEntity>>
 
@@ -24,6 +28,7 @@ interface NoteDao {
     suspend fun search(term: String): List<NoteEntity>
 
     // REPLACE is last-writer-wins. RoomNoteWriteSequencer must drop stale tickets first.
+    // Its tickets are stored in updatedAt, so other writers must not set updatedAt ahead of them.
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(note: NoteEntity)
 

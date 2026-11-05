@@ -1,5 +1,12 @@
 # DEVAM
 
+## 2026-11-06 — P2 yaşam döngüsü sıralaması
+
+- **Dal:** `feature/room-migration-validation` (başlangıç `9e218118`, `main` dokunulmadı, push/merge yok)
+- **Durum:** tamamlandı
+- **Ne yapıldı:** Activity’ye bağlı sıralayıcı/kilit ve `lifecycleScope` iptali riskleri giderildi. Kalıcı monoton bilet `updatedAt` içinde (şema değişmedi), süreç genelinde tek sıralayıcı, `requestId` tekrar koruması, tombstone zamanı korunuyor. `assembleDebug` + `testDebugUnitTest` 36/36 geçti. Rapor güncellendi.
+- **Sonraki tek somut adım:** Cihaz/AVD’de döndürme ve süreç öldürme duman testi; Room’u ana kaynak yapma.
+
 ## 2026-11-06 — P1 yazma sırası
 
 - **Dal:** `feature/room-migration-validation` (başlangıç `6100501`, `main` dokunulmadı, push/merge yok)

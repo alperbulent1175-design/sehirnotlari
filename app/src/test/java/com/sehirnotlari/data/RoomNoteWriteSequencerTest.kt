@@ -131,4 +131,6 @@ class InMemoryNoteWriteStore : NoteWriteStore {
         val current = notes[id] ?: return
         notes[id] = current.copy(deletedAt = time, updatedAt = time, syncState = "PENDING")
     }
+
+    fun maxUpdatedAt(): Long = notes.values.maxOfOrNull { it.updatedAt } ?: 0L
 }
