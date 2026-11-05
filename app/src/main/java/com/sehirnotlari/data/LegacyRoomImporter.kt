@@ -29,6 +29,7 @@ object LegacyRoomImporter {
         json: String,
         store: NoteImportStore,
         stamp: () -> Long = { System.currentTimeMillis() },
+        now: () -> Long = { System.currentTimeMillis() },
     ): Outcome {
         val cities = try {
             JSONObject(json)
@@ -56,7 +57,7 @@ object LegacyRoomImporter {
                     skipped++
                     continue
                 }
-                val time = stamp()
+                // When the note last changed in localStorage is unknown, so modifiedAt stays null.
                 store.upsert(
                     NoteEntity(
                         id = key,
@@ -67,9 +68,11 @@ object LegacyRoomImporter {
                         star = item.optInt("star").coerceIn(0, 5),
                         color = item.optString("color"),
                         favorite = item.optBoolean("fav"),
+                        isAI = item.optBoolean("isAI"),
                         dateLabel = item.optString("date"),
-                        createdAt = time,
-                        updatedAt = time
+                        createdAt = now(),
+                        writeTicket = stamp(),
+                        modifiedAt = null
                     )
                 )
                 inserted++

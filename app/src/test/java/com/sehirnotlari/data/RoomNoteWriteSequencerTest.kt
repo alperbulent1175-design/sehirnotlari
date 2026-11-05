@@ -127,10 +127,10 @@ class InMemoryNoteWriteStore : NoteWriteStore {
         notes[note.id] = note
     }
 
-    override suspend fun softDelete(id: String, time: Long) {
+    override suspend fun softDelete(id: String, ticket: Long, time: Long) {
         val current = notes[id] ?: return
-        notes[id] = current.copy(deletedAt = time, updatedAt = time, syncState = "PENDING")
+        notes[id] = current.copy(deletedAt = time, modifiedAt = time, writeTicket = ticket, syncState = "PENDING")
     }
 
-    fun maxUpdatedAt(): Long = notes.values.maxOfOrNull { it.updatedAt } ?: 0L
+    fun maxWriteTicket(): Long = notes.values.maxOfOrNull { it.writeTicket } ?: 0L
 }

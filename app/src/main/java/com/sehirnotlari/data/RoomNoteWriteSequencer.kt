@@ -7,13 +7,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 interface NoteWriteStore : NoteImportStore {
-    suspend fun softDelete(id: String, time: Long)
+    suspend fun softDelete(id: String, ticket: Long, time: Long)
 }
 
 class RoomNoteWriteStore(private val dao: NoteDao) : NoteWriteStore {
     override suspend fun findAny(id: String) = dao.findAny(id)
     override suspend fun upsert(note: NoteEntity) = dao.upsert(note)
-    override suspend fun softDelete(id: String, time: Long) = dao.softDelete(id, time)
+    override suspend fun softDelete(id: String, ticket: Long, time: Long) = dao.softDelete(id, ticket, time)
 }
 
 data class RoomNoteDraft(
@@ -24,6 +24,7 @@ data class RoomNoteDraft(
     val color: String = "",
     val favorite: Boolean = false,
     val dateLabel: String = "",
+    val isAI: Boolean = false,
 )
 
 sealed class RoomWriteAck {
@@ -36,9 +37,9 @@ sealed class RoomWriteAck {
  * Orders Room shadow writes per note across activity recreation and process restarts.
  *
  * A ticket is a hybrid clock: `max(last + 1, wall clock)`, seeded once from the largest
- * persisted `updatedAt`. Applied writes store their ticket in `updatedAt`, so the ordering
- * survives restarts without a schema change. Assign [nextTicket] on the bridge thread
- * before launching work. Tombstones are never revived. Note IDs stay `city::id`.
+ * persisted `writeTicket`. Applied writes store their ticket in `writeTicket` and the wall-clock
+ * time in `modifiedAt`; only the ticket decides ordering. Assign [nextTicket] on the bridge
+ * thread before launching work. Tombstones are never revived. Note IDs stay `city::id`.
  */
 class RoomNoteWriteSequencer(
     private val store: NoteWriteStore,
@@ -78,8 +79,9 @@ class RoomNoteWriteSequencer(
             val ack = when {
                 existing?.deletedAt != null ->
                     RoomWriteAck.Rejected("Deleted note cannot be restored by a stale write")
-                existing != null && existing.updatedAt >= ticket -> RoomWriteAck.IgnoredStale
+                existing != null && existing.writeTicket >= ticket -> RoomWriteAck.IgnoredStale
                 else -> {
+                    val now = clock()
                     store.upsert(
                         NoteEntity(
                             id = key,
@@ -90,9 +92,11 @@ class RoomNoteWriteSequencer(
                             star = draft.star.coerceIn(0, 5),
                             color = draft.color,
                             favorite = draft.favorite,
+                            isAI = draft.isAI,
                             dateLabel = draft.dateLabel,
-                            createdAt = existing?.createdAt ?: ticket,
-                            updatedAt = ticket,
+                            createdAt = existing?.createdAt ?: now,
+                            writeTicket = ticket,
+                            modifiedAt = now,
                             deletedAt = null,
                             syncState = existing?.syncState ?: "LOCAL"
                         )
@@ -112,23 +116,25 @@ class RoomNoteWriteSequencer(
             val existing = store.findAny(key)
             val ack = when {
                 existing == null -> {
+                    val now = clock()
                     store.upsert(
                         NoteEntity(
                             id = key,
                             city = city,
                             title = "",
-                            createdAt = ticket,
-                            updatedAt = ticket,
-                            deletedAt = ticket,
+                            createdAt = now,
+                            writeTicket = ticket,
+                            modifiedAt = now,
+                            deletedAt = now,
                             syncState = "PENDING"
                         )
                     )
                     RoomWriteAck.Applied
                 }
                 existing.deletedAt != null -> RoomWriteAck.Applied
-                existing.updatedAt >= ticket -> RoomWriteAck.IgnoredStale
+                existing.writeTicket >= ticket -> RoomWriteAck.IgnoredStale
                 else -> {
-                    store.softDelete(key, ticket)
+                    store.softDelete(key, ticket, clock())
                     RoomWriteAck.Applied
                 }
             }
@@ -145,12 +151,12 @@ class RoomNoteWriteSequencer(
 
         @Volatile private var shared: RoomNoteWriteSequencer? = null
 
+        fun forDao(dao: NoteDao): RoomNoteWriteSequencer =
+            RoomNoteWriteSequencer(store = RoomNoteWriteStore(dao), seed = { dao.maxWriteTicket() ?: 0L })
+
         fun shared(dao: NoteDao): RoomNoteWriteSequencer =
             shared ?: synchronized(this) {
-                shared ?: RoomNoteWriteSequencer(
-                    store = RoomNoteWriteStore(dao),
-                    seed = { dao.maxUpdatedAt() ?: 0L }
-                ).also { shared = it }
+                shared ?: forDao(dao).also { shared = it }
             }
     }
 }

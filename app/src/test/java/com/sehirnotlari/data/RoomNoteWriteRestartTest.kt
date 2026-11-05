@@ -9,7 +9,7 @@ import org.junit.Test
 
 class RoomNoteWriteRestartTest {
     private fun relaunch(store: InMemoryNoteWriteStore, clock: () -> Long) =
-        RoomNoteWriteSequencer(store, clock = clock, seed = { store.maxUpdatedAt() })
+        RoomNoteWriteSequencer(store, clock = clock, seed = { store.maxWriteTicket() })
 
     @Test
     fun restartWithRewoundClockStillOrdersAfterPersistedWrites() = runBlocking {
@@ -103,10 +103,10 @@ class RoomNoteWriteRestartTest {
     }
 
     @Test
-    fun legacyRowsWithFutureUpdatedAtStillAcceptNewEdits() = runBlocking {
+    fun legacyRowsWithFutureWriteTicketStillAcceptNewEdits() = runBlocking {
         val store = InMemoryNoteWriteStore()
         val future = 9_000_000_000_000L
-        store.upsert(NoteEntity(id = "Bursa::101", city = "Bursa", title = "Eski kayıt", updatedAt = future, createdAt = future))
+        store.upsert(NoteEntity(id = "Bursa::101", city = "Bursa", title = "Eski kayıt", writeTicket = future, createdAt = future))
         val sequencer = relaunch(store) { 1_700_000_000_000L }
         assertEquals(RoomWriteAck.Applied, sequencer.upsert("Bursa", "101", draft("Düzenlendi"), sequencer.nextTicket()))
         val kept = store.findAny("Bursa::101")

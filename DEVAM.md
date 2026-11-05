@@ -1,5 +1,12 @@
 # DEVAM
 
+## 2026-11-06 — P4 Room şema geçişi v1 → v2
+
+- **Dal:** `feature/room-migration-validation` (başlangıç `c8d65b7`, `main` dokunulmadı, push/merge yok)
+- **Durum:** tamamlandı
+- **Ne yapıldı:** Room v2: `isAI` (boş olabilir), yazma sırası için `writeTicket` (eski `updatedAt` aynen taşındı), gerçek değişiklik zamanı için `modifiedAt` (v1 satırlarında `NULL`, tahmin yok). Açık `MIGRATION_1_2` tabloyu tek işlemde yeniden kurar. Kimlikler, tombstone'lar ve tüm alanlar korunur. Şemalar `app/schemas` altında (v1 dahil). Sıralayıcı, DAO, eski not aktarımı ve köprü yeni şemaya uyarlandı. Robolectric ile gerçek v1 dosyası taşındı; yarıda kalan migration'ın geri alındığı doğrulandı. `assembleDebug` + `testDebugUnitTest` 66/66 geçti. Rapor güncellendi.
+- **Sonraki tek somut adım:** v1 APK ile not yazılmış bir cihaza/AVD'ye bu sürümü kurup migration'ı gerçek dosyada doğrula; ardından Room'u ana kaynak yapma planı.
+
 ## 2026-11-06 — P3 not kimliği güvenliği
 
 - **Dal:** `feature/room-migration-validation` (başlangıç `933ff7a`, `main` dokunulmadı, push/merge yok)

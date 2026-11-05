@@ -18,7 +18,19 @@ class RoomMigrationGuardTest {
     fun databaseDoesNotUseDestructiveMigration() {
         val source = sourceFile("src/main/java/com/sehirnotlari/data/CityNotesDatabase.kt").readText()
         assertFalse(source.contains("fallbackToDestructiveMigration"))
+        assertFalse(source.contains("fallbackToDestructiveMigrationOnDowngrade"))
         assertTrue(source.contains("city_notes.db"))
+        assertTrue(source.contains("version = 2, exportSchema = true"))
+        assertTrue(source.contains(".addMigrations(*NoteSchemaMigrations.ALL)"))
+    }
+
+    @Test
+    fun everySchemaVersionHasExportedSchemaAndExplicitMigration() {
+        val migrations = sourceFile("src/main/java/com/sehirnotlari/data/NoteSchemaMigrations.kt").readText()
+        assertTrue(migrations.contains("Migration(1, 2)"))
+        assertTrue(migrations.contains("arrayOf(MIGRATION_1_2)"))
+        assertTrue(sourceFile("schemas/com.sehirnotlari.data.CityNotesDatabase/1.json").isFile)
+        assertTrue(sourceFile("schemas/com.sehirnotlari.data.CityNotesDatabase/2.json").isFile)
     }
 
     @Test

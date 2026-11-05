@@ -23,6 +23,8 @@ androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = 
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 org-json = { group = "org.json", name = "json", version = "20250517" }
 mozilla-rhino = { group = "org.mozilla", name = "rhino", version = "1.7.15" }
+robolectric = { group = "org.robolectric", name = "robolectric", version = "4.17" }
+androidx-test-core = { group = "androidx.test", name = "core", version = "1.7.0" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutinesAndroid" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

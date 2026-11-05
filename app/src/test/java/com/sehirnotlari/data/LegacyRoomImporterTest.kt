@@ -46,7 +46,7 @@ class LegacyRoomImporterTest {
                 city = "Bursa",
                 title = "Ulu Cami",
                 deletedAt = now,
-                updatedAt = now,
+                writeTicket = now,
                 syncState = "PENDING"
             )
         )

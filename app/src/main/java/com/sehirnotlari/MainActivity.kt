@@ -337,7 +337,13 @@ class MainActivity : AppCompatActivity() {
         fun deleteRoomNote(city: String, id: String, requestId: String) {
             if (city.isBlank() || id.isBlank() || requestId.isBlank()) return
             val sequencer = noteWriteSequencer
-            val ticket = sequencer.nextTicket()
+            val ticket = try {
+                sequencer.nextTicket()
+            } catch (e: Exception) {
+                Log.e("SehirNotlari", "Room open failed", e)
+                postRoomResult(RoomBridgeScripts.deleteResult(requestId, false, e.message ?: "Room open failed"))
+                return
+            }
             RoomNoteWriteSequencer.writeScope.launch {
                 try {
                     val ack = sequencer.delete(city, id, ticket, requestId)
@@ -355,7 +361,13 @@ class MainActivity : AppCompatActivity() {
         fun upsertRoomNote(city: String, noteJson: String, requestId: String) {
             if (city.isBlank() || city.length > 120 || noteJson.length > 100_000 || requestId.length > 100) return
             val sequencer = noteWriteSequencer
-            val ticket = sequencer.nextTicket()
+            val ticket = try {
+                sequencer.nextTicket()
+            } catch (e: Exception) {
+                Log.e("SehirNotlari", "Room open failed", e)
+                postRoomResult(RoomBridgeScripts.writeResult(requestId, false, e.message ?: "Room open failed"))
+                return
+            }
             RoomNoteWriteSequencer.writeScope.launch {
                 try {
                     val item = JSONObject(noteJson)
@@ -371,7 +383,8 @@ class MainActivity : AppCompatActivity() {
                             star = item.optInt("star"),
                             color = item.optString("color"),
                             favorite = item.optBoolean("fav"),
-                            dateLabel = item.optString("date")
+                            dateLabel = item.optString("date"),
+                            isAI = item.optBoolean("isAI")
                         ),
                         ticket,
                         requestId.takeIf { it.isNotBlank() }
@@ -400,6 +413,7 @@ class MainActivity : AppCompatActivity() {
                             put("color", note.color)
                             put("fav", note.favorite)
                             put("date", note.dateLabel)
+                            note.isAI?.let { put("isAI", it) }
                         })
                     }
                     withContext(Dispatchers.Main) {

@@ -183,3 +183,85 @@ Yeni `RoomNoteKeysTest` (7): eski sayısal anahtar, yeni mikro-ölçekli kimliğ
 3. **Mevcut çakışmış kimlikler** (P3 öncesi aynı milisaniyede oluşmuş iki not) otomatik ayrıştırılmaz; düzenleme ilk eşleşeni etkiler, silme ikisini birden kaldırır (P3 öncesiyle aynı davranış). Toplu yeniden numaralandırma kurala aykırı olduğu için yapılmadı.
 4. **Kayan nokta kimlikler:** `1e21` gibi üstel biçimli içe aktarılmış sayılarda JS (`"1e+21"`) ve Kotlin (`"1.0E21"`) metinleri farklıdır; gerçek veride beklenmez.
 5. Önceki riskler sürüyor: `isAI` Room’da yok, Activity yeniden oluşursa köprü sonucu kaybolur, `updatedAt` sıralama biletidir, Room ana kaynak değil.
+
+## P4 — Room şema geçişi v1 → v2 (6 Kasım 2026)
+
+Başlangıç: `c8d65b7db6cbaaa4118c75592e1d3de7a720728f`. Push/merge yok. `main` değişmedi. Otomatik aktarım kapalı. `index.html` ve `localStorage` yolu değişmedi. Room hâlâ gölge kopya; ana kaynak değil. Yıkıcı migration yok; not kimlikleri (`city::id`) aynen korunur.
+
+### v1 incelemesi
+- Tek tablo `notes`; `exportSchema = false` idi, şema dosyası yoktu. v1 şeması, değişiklikten önce aynı entity ile `app/schemas/com.sehirnotlari.data.CityNotesDatabase/1.json` olarak dışa aktarıldı. Kimlik özeti `d453335eff3e94eadbf36e25e651ec4b`; cihazlardaki v1 veritabanlarında `room_master_table` içinde bu değer durur.
+- Okuma yolları: `findAny`, `allActive` (WebView anlık görüntüsü), `maxUpdatedAt` (bilet tohumu), `observeActive`, `observeCity`, `search`, `pendingSync`.
+- Yazma yolları: sıralayıcı `upsert` / `delete` (`upsertRoomNote`, `deleteRoomNote`), `softDelete`, opt-in eski not aktarımı (`saveNotesToRoom` → `LegacyRoomImporter`).
+- Sorun: P2'den beri `updatedAt` gerçek zaman değil, sıralama biletiydi. Tombstone'larda `deletedAt` de bilet değeri taşıyordu. `isAI` hiç saklanmıyordu.
+
+### v2 şeması
+| Sütun | v1 | v2 | Anlam |
+| :--- | :--- | :--- | :--- |
+| `updatedAt` | `INTEGER NOT NULL` | **kaldırıldı** | — |
+| `writeTicket` | — | `INTEGER NOT NULL` | Yalnız yazma sırası (hibrit saat). Zaman değildir. |
+| `modifiedAt` | — | `INTEGER` (boş olabilir) | Son uygulanan değişikliğin duvar saati. `NULL` = bilinmiyor. |
+| `isAI` | — | `INTEGER` (boş olabilir) | `1`/`0` biliniyor; `NULL` = v1'den geldi, köken kaydedilmemiş. |
+| `createdAt` | aynı | aynı | Satırın Room'a ilk yazılma zamanı. |
+| `deletedAt` | aynı | aynı | Tombstone işareti; v2'de yeni silmeler duvar saati yazar. |
+| İndeks | `index_notes_updatedAt` | `index_notes_writeTicket` | `index_notes_city` aynı. |
+
+Veritabanı sürümü 2, `exportSchema = true`, şemalar `app/schemas` altında (KSP `room.schemaLocation`). Kimlik özeti v2: `b64828285a91f1f93115230ff973b648`.
+
+### Açık migration (`NoteSchemaMigrations.MIGRATION_1_2`)
+`ALTER TABLE … RENAME COLUMN` SQLite 3.25 (API 30) ister; `minSdk` 24 olduğu için tablo yeniden kuruldu. Room migration'ı tek işlem (transaction) içinde çalıştırır:
+1. `notes_v2` tablosu Room'un v2 için ürettiği `CREATE TABLE` ile birebir aynı oluşturulur.
+2. Tüm satırlar `INSERT … SELECT` ile kopyalanır: `updatedAt` → `writeTicket` aynen; `modifiedAt` ve `isAI` → `NULL`; diğer bütün sütunlar (kimlik, şehir, içerik, `createdAt`, `deletedAt`, `syncState`) aynen.
+3. Eski tablo silinir, `notes_v2` → `notes` olarak adlandırılır, iki indeks yeniden kurulur.
+
+Gerçek değişiklik zamanı ve yapay zekâ kökeni v1'de kaydedilmediği için **tahminle doldurulmadı**; `NULL` kalır. `updatedAt` değerinden `modifiedAt` türetilmedi, çünkü saat geri alınmışsa bilet gerçek zamandan ileride olabilir.
+
+`CityNotesDatabase.builder()` migration'ı ekler; üretim `get()` ve testler aynı kurucuyu kullanır. `fallbackToDestructiveMigration` yok.
+
+### Yeni şemaya uyarlanan yollar
+- **Sıralayıcı:** karşılaştırma `writeTicket` ile. Uygulanan yazma `writeTicket = bilet`, `modifiedAt = duvar saati`, `isAI = taslak değeri` yazar; `createdAt` korunur. Silme `writeTicket = bilet`, `deletedAt = modifiedAt = duvar saati`; var olan tombstone'a dokunulmaz. Tohum `maxWriteTicket()`.
+- **Eski not aktarımı:** `writeTicket = bilet`, `createdAt = şimdi`, `modifiedAt = NULL` (localStorage'daki son değişiklik zamanı bilinmiyor), `isAI` localStorage'daki değerden. Var olan satır ve tombstone atlanır.
+- **Köprü:** `upsertRoomNote` `isAI` taşır. `requestRoomNotes` `isAI` biliniyorsa gönderir; bilinmiyorsa alanı hiç koymaz. Bilet ataması artık açılış veya migration hatasında JavaBridge iş parçacığını düşürmez; hata WebView'a bildirilir.
+- **DAO sıralamaları:** `ORDER BY writeTicket DESC`.
+
+### Migration sonuçları (Robolectric, gerçek SQLite dosyası, üretim Room kurucusu)
+Eski veritabanı `1.json` içindeki SQL ve v1 kimlik özetiyle, gerçek bir v1 dosyası olarak kuruldu. Sonra `CityNotesDatabase.builder()` ile açıldı. İçerik: eski `Date.now()` kimliği, başka şehirde aynı sayı, metin kimlik, P3 kimliği, tombstone, tırnak ve Türkçe karakterli içerik.
+
+| Kontrol | Sonuç |
+| :--- | :--- |
+| Satır sayısı ve her alan (kimlik, içerik, `createdAt`, `deletedAt`, `syncState`) | 5/5 birebir korundu |
+| `writeTicket` | eski `updatedAt` ile aynı |
+| `modifiedAt`, `isAI` | hepsi `NULL` |
+| Tombstone | korundu; diriltme `Rejected`; `deletedAt` değişmedi |
+| `PRAGMA user_version` | 2 |
+| `room_master_table` | v2 kimlik özeti |
+| Sütun düzeni | `2.json` ile aynı; `updatedAt` yok |
+| İndeksler | `index_notes_city`, `index_notes_writeTicket`; eski indeks yok; `notes_v2` artığı yok |
+| Boş v1 veritabanı | sorunsuz geçti |
+| Sıfırdan kurulum | doğrudan v2 |
+| Yarıda kalan migration | işlem geri alındı; dosya v1'de, 5 satır ve tombstone aynen; sonra doğru migration başarılı |
+| Gelecek tarihli v1 bileti | yeni biletler ondan büyük başlar; gecikmiş eski yazma `IgnoredStale` |
+
+Ek doğrulama: migration'dan yazma bileti indeksi geçici olarak çıkarıldığında Room şema doğrulaması açılışı reddetti ve 6 migration testi düştü. Değişiklik geri alındı.
+
+### Derleme ve test
+| Komut | Sonuç |
+| :--- | :--- |
+| `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest --rerun-tasks` | **BUILD SUCCESSFUL** (2m 16s). 66 test, 0 başarısız, 0 atlanan. |
+
+Yeni test bağımlılıkları (yalnız `testImplementation`, APK'ya girmez): `org.robolectric:robolectric:4.17`, `androidx.test:core:1.7.0`. Robolectric testleri `@Config(sdk = [35])` ile çalışır; `compileSdk` 37'yi henüz desteklemiyor.
+
+Yeni testler (12):
+- `NoteSchemaMigrationTest` (7, Robolectric): kayıpsız taşıma; v2 düzeni ve kimlik özeti; başarısız migration'ın geri alınması; boş v1; sıfırdan v2; migration sonrası sıra, tombstone, `modifiedAt` ve `isAI` yazımı; migration sonrası eski not aktarımı.
+- `NoteSchemaContractTest` (4): v1 şema özeti; migration `CREATE TABLE` ve indekslerinin `2.json` ile birebir aynılığı; v2'de boş olabilen sütunların yalnız `isAI`, `modifiedAt`, `deletedAt` olması; her v1 sütununun kopyalanması ve `updatedAt` → `writeTicket` eşlemesi.
+- `RoomMigrationGuardTest` +1: her sürümün şema dosyası ve açık migration'ı var; veritabanı sürüm 2, migration kayıtlı, yıkıcı geri dönüş yok.
+
+Mevcut testler yeni alan adlarına uyarlandı (`writeTicket`, `maxWriteTicket`, `softDelete(id, ticket, time)`); davranış beklentileri değişmedi.
+
+### Kalan riskler
+1. **Cihaz duman testi yok.** Migration Robolectric'in SQLite'ında doğrulandı; gerçek bir cihazdaki v1 dosyasında denenmedi. İlk açılışta tablo yeniden kurulduğu için çok büyük veritabanlarında kısa bir gecikme olabilir. Not sayısı küçük olduğundan beklenmiyor.
+2. **Geri dönüş yok.** v2'ye geçmiş bir cihaza v1 APK'sı kurulursa Room açılmaz; yıkıcı geri dönüş bilerek eklenmedi. Room gölge kopya olduğu için localStorage notları etkilenmez.
+3. **v1'den gelen belirsizlik kalıcı.** v1 satırlarında `modifiedAt` ve `isAI` `NULL` kalır. `isAI` ancak not yeniden yazılınca, `modifiedAt` ancak yeni bir değişiklikle dolar. Gelecekteki eşitleme `NULL` değerini "bilinmiyor" olarak ele almalı.
+4. **v1 tombstone'larında `deletedAt` bilet değeridir.** Duvar saatine çok yakın olsa da saat geri alınmışsa ileride olabilir. Bu tombstone'larda `modifiedAt` `NULL` kalarak belirsizliği gösterir.
+5. **`createdAt`** notun WebView'da oluşturulma zamanı değil, Room'a ilk yazılma zamanıdır.
+6. **Eski not aktarımında `isAI`:** localStorage'da alan yoksa `false` yazılır. Bu, arayüzün o notu gösterdiği şekille aynıdır.
+7. Önceki riskler sürüyor: Activity yeniden oluşursa köprü sonucu kaybolur; cihazlar arası kimlik çakışması çok düşük olasılıkla mümkündür; Room ana kaynak değildir.
