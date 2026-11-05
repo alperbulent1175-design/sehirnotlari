@@ -1,7 +1,10 @@
 package com.sehirnotlari
 
 import com.sehirnotlari.data.CityNotesDatabase
+import com.sehirnotlari.data.LegacyRoomImporter
 import com.sehirnotlari.data.NoteEntity
+import com.sehirnotlari.data.RoomBridgeScripts
+import com.sehirnotlari.data.RoomNoteImportStore
 import androidx.room.withTransaction
 import org.json.JSONArray
 import kotlinx.coroutines.sync.Mutex
@@ -291,11 +294,9 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun saveNotesToRoom(json: String) {
             // Legacy import remains opt-in. The WebView does not invoke it automatically.
-            if (json.length > 2_000_000) {
+            LegacyRoomImporter.oversizedPayloadMessage(json)?.let { message ->
                 runOnUiThread {
-                    webView.evaluateJavascript(
-                        "window.onRoomImportResult && window.onRoomImportResult(false,0,0,'Import payload too large');", null
-                    )
+                    webView.evaluateJavascript(RoomBridgeScripts.importResult(false, 0, 0, message), null)
                 }
                 return
             }
@@ -303,58 +304,28 @@ class MainActivity : AppCompatActivity() {
                 var inserted = 0
                 var skipped = 0
                 try {
-                    val cities = JSONObject(json)
-                    if (cities.length() == 0 && json.trim() != "{}") {
-                        throw IllegalArgumentException("Invalid legacy notes payload")
-                    }
                     roomWriteMutex.withLock {
                         notesDatabase.withTransaction {
-                            val dao = notesDatabase.notes()
-                            val keys = cities.keys()
-                            while (keys.hasNext()) {
-                                val city = keys.next()
-                                val notes = cities.optJSONArray(city)
-                                    ?: throw IllegalArgumentException("Invalid notes array for city")
-                                for (i in 0 until notes.length()) {
-                                    val item = notes.optJSONObject(i)
-                                        ?: throw IllegalArgumentException("Invalid note entry")
-                                    val idValue = item.opt("id")
-                                    val id = when (idValue) {
-                                        is String -> idValue.takeIf { it.isNotBlank() }
-                                        is Number -> idValue.toString()
-                                        else -> null
-                                    } ?: throw IllegalArgumentException("Missing or invalid note id")
-                                    val key = "$city::$id"
-                                    // Preserve existing edits and tombstones on retries.
-                                    if (dao.findAny(key) != null) {
-                                        skipped++
-                                        continue
-                                    }
-                                    dao.upsert(NoteEntity(
-                                        id = key, city = city,
-                                        title = item.optString("title"),
-                                        content = item.optString("content"),
-                                        category = item.optString("category", "Genel"),
-                                        star = item.optInt("star").coerceIn(0, 5),
-                                        color = item.optString("color"),
-                                        favorite = item.optBoolean("fav"),
-                                        dateLabel = item.optString("date")
-                                    ))
-                                    inserted++
-                                }
-                            }
+                            val outcome = LegacyRoomImporter.importOrThrow(
+                                json,
+                                RoomNoteImportStore(notesDatabase.notes())
+                            )
+                            inserted = outcome.inserted
+                            skipped = outcome.skipped
                         }
                     }
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            "window.onRoomImportResult && window.onRoomImportResult(true,$inserted,$skipped,null);", null
+                            RoomBridgeScripts.importResult(true, inserted, skipped, null),
+                            null
                         )
                     }
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Room import failed", e)
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            "window.onRoomImportResult && window.onRoomImportResult(false,0,0,${JSONObject.quote(e.message ?: "Room import failed")});", null
+                            RoomBridgeScripts.importResult(false, 0, 0, e.message ?: "Room import failed"),
+                            null
                         )
                     }
                 }
@@ -379,14 +350,16 @@ class MainActivity : AppCompatActivity() {
                     }
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            "window.onRoomDeleteResult && window.onRoomDeleteResult(${JSONObject.quote(requestId)},true,null);", null
+                            RoomBridgeScripts.deleteResult(requestId, true, null),
+                            null
                         )
                     }
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Room delete failed", e)
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            "window.onRoomDeleteResult && window.onRoomDeleteResult(${JSONObject.quote(requestId)},false,${JSONObject.quote(e.message ?: "Room delete failed")});", null
+                            RoomBridgeScripts.deleteResult(requestId, false, e.message ?: "Room delete failed"),
+                            null
                         )
                     }
                 }
@@ -421,14 +394,16 @@ class MainActivity : AppCompatActivity() {
                     }
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            "window.onRoomWriteResult && window.onRoomWriteResult(${JSONObject.quote(requestId)},true,null);", null
+                            RoomBridgeScripts.writeResult(requestId, true, null),
+                            null
                         )
                     }
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Room note upsert failed", e)
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            "window.onRoomWriteResult && window.onRoomWriteResult(${JSONObject.quote(requestId)},false,${JSONObject.quote(e.message ?: "Room write failed")});", null
+                            RoomBridgeScripts.writeResult(requestId, false, e.message ?: "Room write failed"),
+                            null
                         )
                     }
                 }
@@ -460,7 +435,8 @@ class MainActivity : AppCompatActivity() {
                     Log.e("SehirNotlari", "Room read failed", e)
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            "window.onRoomNotesError && window.onRoomNotesError(${JSONObject.quote(e.message ?: "Room read failed")});", null
+                            RoomBridgeScripts.notesError(e.message ?: "Room read failed"),
+                            null
                         )
                     }
                 }
