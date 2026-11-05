@@ -318,8 +318,12 @@ class MainActivity : AppCompatActivity() {
                                 for (i in 0 until notes.length()) {
                                     val item = notes.optJSONObject(i)
                                         ?: throw IllegalArgumentException("Invalid note entry")
-                                    val id = item.optString("id").takeIf { it.isNotBlank() }
-                                        ?: throw IllegalArgumentException("Missing note id")
+                                    val idValue = item.opt("id")
+                                    val id = when (idValue) {
+                                        is String -> idValue.takeIf { it.isNotBlank() }
+                                        is Number -> idValue.toString()
+                                        else -> null
+                                    } ?: throw IllegalArgumentException("Missing or invalid note id")
                                     val key = "$city::$id"
                                     // Preserve existing edits and tombstones on retries.
                                     if (dao.findAny(key) != null) {
