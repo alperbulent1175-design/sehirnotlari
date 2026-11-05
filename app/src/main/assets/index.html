@@ -922,13 +922,31 @@ let msy=0;
 document.getElementById('modalEl').addEventListener('touchstart',e=>msy=e.touches[0].clientY,{passive:true});
 document.getElementById('modalEl').addEventListener('touchend',e=>{if(e.changedTouches[0].clientY-msy>80)closeModal();},{passive:true});
 
+// Room shadow-write pilot: localStorage remains the authoritative source until
+// startup hydration, delete and edit flows have passed Android device tests.
+const roomPilotPending=new Map();
+window.onRoomWriteResult=function(requestId,ok,error){
+  if(!roomPilotPending.has(requestId))return;
+  roomPilotPending.delete(requestId);
+  if(!ok){console.error('Room pilot write failed:',error);toast('⚠️ Yerel not kaydedildi; Room kaydı başarısız');}
+};
+function mirrorNewNoteToRoom(city,note){
+  if(!(window.Android&&typeof window.Android.upsertRoomNote==='function'))return;
+  const requestId='note-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+  roomPilotPending.set(requestId,true);
+  try{window.Android.upsertRoomNote(city,JSON.stringify(note),requestId);}
+  catch(e){roomPilotPending.delete(requestId);console.error('Room bridge unavailable',e);toast('⚠️ Room bağlantısı kullanılamadı');}
+}
+
 // CRUD
 document.getElementById('ba').onclick=()=>{
   if(!curCity)return;
   const t=document.getElementById('nt').value.trim(),c=document.getElementById('nc').value.trim();
   if(!t){toast('Lütfen bir başlık girin.');return;}
   if(!DB[curCity])DB[curCity]=[];
-  DB[curCity].push({id:Date.now(),title:t,content:c,category:selCat,star:selStar,color:selColor,fav:false,date:new Date().toLocaleDateString('tr-TR',{day:'2-digit',month:'short',year:'numeric'})});
+  const newNote={id:Date.now(),title:t,content:c,category:selCat,star:selStar,color:selColor,fav:false,date:new Date().toLocaleDateString('tr-TR',{day:'2-digit',month:'short',year:'numeric'})};
+  DB[curCity].push(newNote);
+  mirrorNewNoteToRoom(curCity,newNote);
   sv();document.getElementById('nt').value='';document.getElementById('nc').value='';
   selStar=0;selColor='';
   document.getElementById('newStars').querySelectorAll('.star').forEach(s=>s.classList.remove('on'));
