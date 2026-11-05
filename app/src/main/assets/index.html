@@ -808,7 +808,7 @@ function confirmAI(){
   const city = document.getElementById('aiCitySelect').value;
   if(!city || !pendingAI) return;
   if(!DB[city]) DB[city] = [];
-  DB[city].push({
+  const aiNote={
     id: Date.now(),
     title: pendingAI.title,
     content: pendingAI.content,
@@ -818,8 +818,10 @@ function confirmAI(){
     fav: false,
     isAI: true,
     date: new Date().toLocaleDateString('tr-TR',{day:'2-digit',month:'short',year:'numeric'})
-  });
+  };
+  DB[city].push(aiNote);
   sv();
+  mirrorNewNoteToRoom(city,aiNote);
   updateStyles();
   updateSum();
   if(curCity === city) renderNotes();
@@ -830,7 +832,7 @@ function confirmAI(){
 // Stars
 function initStars(id,cb){document.getElementById(id).querySelectorAll('.star').forEach(s=>s.addEventListener('click',()=>{const v=+s.getAttribute('data-v');document.getElementById(id).querySelectorAll('.star').forEach((x,i)=>x.classList.toggle('on',i<v));cb(v);}));}
 initStars('newStars',v=>{selStar=v;document.getElementById('starLabel').textContent='★'.repeat(v);});
-initStars('editStars',v=>{const n=DB[editingCity]?.find(n=>n.id===editingId);if(n){n.star=v;sv();renderNotes();}});
+initStars('editStars',v=>{const n=DB[editingCity]?.find(n=>n.id===editingId);if(n){n.star=v;sv();mirrorNewNoteToRoom(editingCity,n);renderNotes();}});
 document.querySelectorAll('.color-opt').forEach(o=>o.addEventListener('click',()=>{document.querySelectorAll('.color-opt').forEach(x=>x.classList.remove('sel'));o.classList.add('sel');selColor=o.getAttribute('data-col');}));
 document.getElementById('cats').onclick=e=>{const c=e.target.closest('.cat');if(!c)return;document.querySelectorAll('.cat').forEach(x=>x.classList.remove('sel'));c.classList.add('sel');selCat=c.getAttribute('data-c');};
 
@@ -1096,9 +1098,9 @@ function renderStats(){
 }
 
 function exportJSON(){const b=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`turkiye-notlari-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);toast('📥 JSON indirildi');}
-function importJSON(inp){const f=inp.files[0];if(!f)return;const reader=new FileReader();reader.onload=e=>{try{const d=JSON.parse(e.target.result);let cnt=0;Object.entries(d).forEach(([c,ns])=>{if(!Array.isArray(ns))return;if(!DB[c])DB[c]=[];const ids=new Set(DB[c].map(n=>n.id));ns.forEach(n=>{if(!ids.has(n.id)){DB[c].push(n);cnt++;}});});sv();updateStyles();updateSum();toast(`✅ ${cnt} not içe aktarıldı`);}catch{toast('❌ Geçersiz dosya');}inp.value='';};reader.readAsText(f);}
+function importJSON(inp){const f=inp.files[0];if(!f)return;const reader=new FileReader();reader.onload=e=>{try{const d=JSON.parse(e.target.result);let cnt=0;Object.entries(d).forEach(([c,ns])=>{if(!Array.isArray(ns))return;if(!DB[c])DB[c]=[];const ids=new Set(DB[c].map(n=>n.id));ns.forEach(n=>{if(!ids.has(n.id)){DB[c].push(n);mirrorNewNoteToRoom(c,n);cnt++;}});});sv();updateStyles();updateSum();toast(`✅ ${cnt} not içe aktarıldı`);}catch{toast('❌ Geçersiz dosya');}inp.value='';};reader.readAsText(f);}
 function emailNotes(){const cs=Object.keys(DB).filter(c=>DB[c]&&DB[c].length);if(!cs.length){toast('Gönderilecek not yok.');return;}let body='TÜRKİYE ŞEHİR NOTLARIM\n\n';cs.forEach(c=>{body+=`== ${c} ==\n`;DB[c].forEach(n=>{body+=`[${n.category}] ${n.title}\n${n.content||''}\n${n.date}\n\n`;});});window.location.href=`mailto:?subject=Türkiye Şehir Notlarım&body=${encodeURIComponent(body)}`;}
-function clearAll(){if(!confirm('Tüm notlar silinecek. Emin misiniz?'))return;DB={};sv();updateStyles();updateSum();toast('Tüm notlar silindi');}
+function clearAll(){if(!confirm('Tüm notlar silinecek. Emin misiniz?'))return;const oldDB=DB;DB={};sv();Object.entries(oldDB).forEach(([city,notes])=>{if(Array.isArray(notes))notes.forEach(note=>mirrorDeletedNoteToRoom(city,note.id));});updateStyles();updateSum();toast('Tüm notlar yerel olarak silindi');}
 
 function cloudBackup() {
     if(window.Android && window.Android.backupToCloud) {
