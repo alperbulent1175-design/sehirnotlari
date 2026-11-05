@@ -985,7 +985,12 @@ document.getElementById('ba').onclick=()=>{
   document.querySelectorAll('.color-opt').forEach((o,i)=>o.classList.toggle('sel',i===0));
   renderNotes();updateStyles();updateSum();toast(`${curCity} — not eklendi ✓`);
 };
-function delNote(city,id){if(!DB[city])return;DB[city]=DB[city].filter(n=>n.id!==id);if(!DB[city].length)delete DB[city];sv();renderNotes();updateStyles();updateSum();toast('Not silindi');}
+function mirrorDeletedNoteToRoom(city,id){
+  if(!(window.Android&&typeof window.Android.deleteRoomNote==='function'))return;
+  try{window.Android.deleteRoomNote(city,String(id));}
+  catch(e){console.warn('Room shadow-delete unavailable',e);toast('⚠️ Room silme işlemi gönderilemedi');}
+}
+function delNote(city,id){if(!DB[city])return;DB[city]=DB[city].filter(n=>n.id!==id);if(!DB[city].length)delete DB[city];sv();mirrorDeletedNoteToRoom(city,id);renderNotes();updateStyles();updateSum();toast('Not silindi');}
 function toggleFav(city,id){const n=DB[city]?.find(n=>n.id===id);if(!n)return;n.fav=!n.fav;sv();renderNotes();updateSum();if(document.getElementById('tab-favs').classList.contains('on')) renderFavs();toast(n.fav?'❤️ Favorilere eklendi':'Favorilerden çıkarıldı');}
 
 function renderFavs(){
@@ -1012,7 +1017,7 @@ function renderFavs(){
     </div></div>`).join('');
 }
 function openEdit(city,id){const n=DB[city]?.find(n=>n.id===id);if(!n)return;editingCity=city;editingId=id;document.getElementById('eTitle').value=n.title;document.getElementById('eContent').value=n.content||'';document.getElementById('editStars').querySelectorAll('.star').forEach((s,i)=>s.classList.toggle('on',i<(n.star||0)));document.getElementById('editOv').classList.add('open');}
-function saveEdit(){const n=DB[editingCity]?.find(n=>n.id===editingId);if(!n)return;n.title=document.getElementById('eTitle').value.trim()||n.title;n.content=document.getElementById('eContent').value.trim();sv();renderNotes();updateSum();closeEdit();toast('Not güncellendi ✓');}
+function saveEdit(){const n=DB[editingCity]?.find(n=>n.id===editingId);if(!n)return;n.title=document.getElementById('eTitle').value.trim()||n.title;n.content=document.getElementById('eContent').value.trim();sv();mirrorNewNoteToRoom(editingCity,n);renderNotes();updateSum();closeEdit();toast('Not güncellendi ✓');}
 function closeEdit(){document.getElementById('editOv').classList.remove('open');editingCity=null;editingId=null;}
 document.getElementById('editOv').addEventListener('click',e=>{if(e.target===document.getElementById('editOv'))closeEdit();});
 function shareNote(city, id) {
