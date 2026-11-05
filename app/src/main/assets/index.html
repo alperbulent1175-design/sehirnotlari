@@ -930,6 +930,18 @@ window.onRoomNotesReady=function(snapshot){
     console.warn('Room pilot: invalid snapshot');return;
   }
   roomPilotSnapshot=snapshot;
+  // Compare without modifying the legacy DB; useful before enabling Room hydration.
+  const legacyKeys=new Set(Object.entries(DB).flatMap(([city,notes])=>
+    Array.isArray(notes)?notes.map(note=>city+'::'+String(note.id)):[]));
+  const roomKeys=new Set(Object.entries(snapshot).flatMap(([city,notes])=>
+    Array.isArray(notes)?notes.map(note=>city+'::'+String(note.id)):[]));
+  const onlyLegacy=[...legacyKeys].filter(key=>!roomKeys.has(key));
+  const onlyRoom=[...roomKeys].filter(key=>!legacyKeys.has(key));
+  console.info('Room pilot comparison',{
+    legacyCount:legacyKeys.size,roomCount:roomKeys.size,
+    onlyLegacyCount:onlyLegacy.length,onlyRoomCount:onlyRoom.length
+  });
+  // No automatic reconciliation: deleted legacy notes could otherwise reappear.
   const count=Object.values(snapshot).reduce((n,notes)=>n+(Array.isArray(notes)?notes.length:0),0);
   console.info('Room pilot snapshot loaded:',count,'notes; legacy storage unchanged');
 };
