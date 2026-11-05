@@ -290,37 +290,62 @@ class MainActivity : AppCompatActivity() {
         // Explicit bridge: UI will be switched to Room only after startup hydration is tested.
         @JavascriptInterface
         fun saveNotesToRoom(json: String) {
-            if (json.length > 2_000_000) return
+            // Legacy import remains opt-in. The WebView does not invoke it automatically.
+            if (json.length > 2_000_000) {
+                runOnUiThread {
+                    webView.evaluateJavascript(
+                        "window.onRoomImportResult && window.onRoomImportResult(false,0,0,'Import payload too large');", null
+                    )
+                }
+                return
+            }
             lifecycleScope.launch(Dispatchers.IO) {
-                roomWriteMutex.withLock {
-                    try {
-                        val cities = JSONObject(json)
+                var inserted = 0
+                var skipped = 0
+                try {
+                    val cities = JSONObject(json)
+                    roomWriteMutex.withLock {
                         notesDatabase.withTransaction {
-                        val dao = notesDatabase.notes()
-                        val keys = cities.keys()
-                        while (keys.hasNext()) {
-                            val city = keys.next()
-                            val notes = cities.optJSONArray(city) ?: continue
-                            for (i in 0 until notes.length()) {
-                                val item = notes.optJSONObject(i) ?: continue
-                                val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
-                                // Import only missing records: never overwrite edits or resurrect tombstones.
-                                if (dao.findAny("$city::$id") != null) continue
-                                dao.upsert(NoteEntity(
-                                    id = "$city::$id", city = city,
-                                    title = item.optString("title"),
-                                    content = item.optString("content"),
-                                    category = item.optString("category", "Genel"),
-                                    star = item.optInt("star").coerceIn(0, 5),
-                                    color = item.optString("color"),
-                                    favorite = item.optBoolean("fav"),
-                                    dateLabel = item.optString("date")
-                                ))
+                            val dao = notesDatabase.notes()
+                            val keys = cities.keys()
+                            while (keys.hasNext()) {
+                                val city = keys.next()
+                                val notes = cities.optJSONArray(city) ?: continue
+                                for (i in 0 until notes.length()) {
+                                    val item = notes.optJSONObject(i) ?: continue
+                                    val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
+                                    val key = "$city::$id"
+                                    // Preserve existing edits and tombstones on retries.
+                                    if (dao.findAny(key) != null) {
+                                        skipped++
+                                        continue
+                                    }
+                                    dao.upsert(NoteEntity(
+                                        id = key, city = city,
+                                        title = item.optString("title"),
+                                        content = item.optString("content"),
+                                        category = item.optString("category", "Genel"),
+                                        star = item.optInt("star").coerceIn(0, 5),
+                                        color = item.optString("color"),
+                                        favorite = item.optBoolean("fav"),
+                                        dateLabel = item.optString("date")
+                                    ))
+                                    inserted++
+                                }
                             }
                         }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("SehirNotlari", "Room import failed", e)
+                    }
+                    withContext(Dispatchers.Main) {
+                        webView.evaluateJavascript(
+                            "window.onRoomImportResult && window.onRoomImportResult(true,$inserted,$skipped,null);", null
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e("SehirNotlari", "Room import failed", e)
+                    withContext(Dispatchers.Main) {
+                        webView.evaluateJavascript(
+                            "window.onRoomImportResult && window.onRoomImportResult(false,0,0,${JSONObject.quote(e.message ?: "Room import failed")});", null
+                        )
                     }
                 }
             }
