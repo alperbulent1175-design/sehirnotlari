@@ -303,7 +303,7 @@ class MainActivity : AppCompatActivity() {
                                 val item = notes.optJSONObject(i) ?: continue
                                 val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
                                 dao.upsert(NoteEntity(
-                                    id = id, city = city,
+                                    id = "$city::$id", city = city,
                                     title = item.optString("title"),
                                     content = item.optString("content"),
                                     category = item.optString("category", "Genel"),
@@ -321,6 +321,19 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // A deletion is recorded as a tombstone for future cloud synchronization.
+        @JavascriptInterface
+        fun deleteRoomNote(city: String, id: String) {
+            if (city.isBlank() || id.isBlank()) return
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    notesDatabase.notes().softDelete("$city::$id")
+                } catch (e: Exception) {
+                    Log.e("SehirNotlari", "Room delete failed", e)
+                }
+            }
+        }
+
         @JavascriptInterface
         fun requestRoomNotes() {
             lifecycleScope.launch(Dispatchers.IO) {
@@ -329,7 +342,7 @@ class MainActivity : AppCompatActivity() {
                     notesDatabase.notes().allActive().forEach { note ->
                         val arr = result.optJSONArray(note.city) ?: JSONArray().also { result.put(note.city, it) }
                         arr.put(JSONObject().apply {
-                            put("id", note.id)
+                            put("id", note.id.removePrefix("${note.city}::").toLongOrNull() ?: note.id.removePrefix("${note.city}::"))
                             put("title", note.title)
                             put("content", note.content)
                             put("category", note.category)
