@@ -334,6 +334,44 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Opt-in single-note Room write for end-to-end bridge verification.
+        // Does not alter the current localStorage write path.
+        @JavascriptInterface
+        fun upsertRoomNote(city: String, noteJson: String, requestId: String) {
+            if (city.isBlank() || city.length > 120 || noteJson.length > 100_000 || requestId.length > 100) return
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val item = JSONObject(noteJson)
+                    val id = item.optString("id").takeIf { it.isNotBlank() }
+                        ?: throw IllegalArgumentException("Missing note id")
+                    roomWriteMutex.withLock {
+                        notesDatabase.notes().upsert(NoteEntity(
+                            id = "$city::$id", city = city,
+                            title = item.optString("title"),
+                            content = item.optString("content"),
+                            category = item.optString("category", "Genel"),
+                            star = item.optInt("star").coerceIn(0, 5),
+                            color = item.optString("color"),
+                            favorite = item.optBoolean("fav"),
+                            dateLabel = item.optString("date")
+                        ))
+                    }
+                    withContext(Dispatchers.Main) {
+                        webView.evaluateJavascript(
+                            "window.onRoomWriteResult && window.onRoomWriteResult(\u0024{JSONObject.quote(requestId)},true,null);", null
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e("SehirNotlari", "Room note upsert failed", e)
+                    withContext(Dispatchers.Main) {
+                        webView.evaluateJavascript(
+                            "window.onRoomWriteResult && window.onRoomWriteResult(\u0024{JSONObject.quote(requestId)},false,\u0024{JSONObject.quote(e.message ?: "Room write failed")});", null
+                        )
+                    }
+                }
+            }
+        }
+
         @JavascriptInterface
         fun requestRoomNotes() {
             lifecycleScope.launch(Dispatchers.IO) {
