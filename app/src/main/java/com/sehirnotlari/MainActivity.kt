@@ -302,6 +302,7 @@ class MainActivity : AppCompatActivity() {
                             for (i in 0 until notes.length()) {
                                 val item = notes.optJSONObject(i) ?: continue
                                 val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
+                                if (dao.findAny("$city::$id")?.deletedAt != null) continue
                                 dao.upsert(NoteEntity(
                                     id = "$city::$id", city = city,
                                     title = item.optString("title"),
@@ -328,7 +329,14 @@ class MainActivity : AppCompatActivity() {
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     roomWriteMutex.withLock {
-                        notesDatabase.notes().softDelete("$city::$id")
+                        val dao = notesDatabase.notes()
+                        val key = "$city::$id"
+                        if (dao.findAny(key) == null) {
+                            val now = System.currentTimeMillis()
+                            dao.upsert(NoteEntity(id = key, city = city, title = "", deletedAt = now, updatedAt = now, syncState = "PENDING"))
+                        } else {
+                            dao.softDelete(key)
+                        }
                     }
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
@@ -357,7 +365,11 @@ class MainActivity : AppCompatActivity() {
                     val id = item.optString("id").takeIf { it.isNotBlank() }
                         ?: throw IllegalArgumentException("Missing note id")
                     roomWriteMutex.withLock {
-                        notesDatabase.notes().upsert(NoteEntity(
+                        val dao = notesDatabase.notes()
+                        if (dao.findAny("$city::$id")?.deletedAt != null) {
+                            throw IllegalStateException("Deleted note cannot be restored by a stale write")
+                        }
+                        dao.upsert(NoteEntity(
                             id = "$city::$id", city = city,
                             title = item.optString("title"),
                             content = item.optString("content"),
