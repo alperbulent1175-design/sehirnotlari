@@ -304,6 +304,9 @@ class MainActivity : AppCompatActivity() {
                 var skipped = 0
                 try {
                     val cities = JSONObject(json)
+                    if (cities.length() == 0 && json.trim() != "{}") {
+                        throw IllegalArgumentException("Invalid legacy notes payload")
+                    }
                     roomWriteMutex.withLock {
                         notesDatabase.withTransaction {
                             val dao = notesDatabase.notes()
