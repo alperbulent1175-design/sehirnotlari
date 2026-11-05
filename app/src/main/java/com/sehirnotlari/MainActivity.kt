@@ -2,6 +2,7 @@ package com.sehirnotlari
 
 import com.sehirnotlari.data.CityNotesDatabase
 import com.sehirnotlari.data.NoteEntity
+import androidx.room.withTransaction
 import org.json.JSONArray
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -294,6 +295,7 @@ class MainActivity : AppCompatActivity() {
                 roomWriteMutex.withLock {
                     try {
                         val cities = JSONObject(json)
+                        notesDatabase.withTransaction {
                         val dao = notesDatabase.notes()
                         val keys = cities.keys()
                         while (keys.hasNext()) {
@@ -315,6 +317,7 @@ class MainActivity : AppCompatActivity() {
                                     dateLabel = item.optString("date")
                                 ))
                             }
+                        }
                         }
                     } catch (e: Exception) {
                         Log.e("SehirNotlari", "Room import failed", e)
