@@ -14,6 +14,7 @@ data class NoteEntity(
     val star: Int = 0,
     val color: String = "",
     val favorite: Boolean = false,
+    val dateLabel: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val deletedAt: Long? = null,
