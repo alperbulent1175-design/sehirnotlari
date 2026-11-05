@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NoteDao {
+    @Query("SELECT * FROM notes WHERE id = :id LIMIT 1")
+    suspend fun findAny(id: String): NoteEntity?
+
     @Query("SELECT * FROM notes WHERE deletedAt IS NULL ORDER BY updatedAt DESC")
     suspend fun allActive(): List<NoteEntity>
 
