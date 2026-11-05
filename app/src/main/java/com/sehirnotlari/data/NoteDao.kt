@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface NoteDao {
     @Query("SELECT * FROM notes WHERE deletedAt IS NULL ORDER BY updatedAt DESC")
+    suspend fun allActive(): List<NoteEntity>
+
+    @Query("SELECT * FROM notes WHERE deletedAt IS NULL ORDER BY updatedAt DESC")
     fun observeActive(): Flow<List<NoteEntity>>
 
     @Query("SELECT * FROM notes WHERE city = :city AND deletedAt IS NULL ORDER BY updatedAt DESC")
