@@ -310,10 +310,13 @@ class MainActivity : AppCompatActivity() {
                             val keys = cities.keys()
                             while (keys.hasNext()) {
                                 val city = keys.next()
-                                val notes = cities.optJSONArray(city) ?: continue
+                                val notes = cities.optJSONArray(city)
+                                    ?: throw IllegalArgumentException("Invalid notes array for city")
                                 for (i in 0 until notes.length()) {
-                                    val item = notes.optJSONObject(i) ?: continue
-                                    val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
+                                    val item = notes.optJSONObject(i)
+                                        ?: throw IllegalArgumentException("Invalid note entry")
+                                    val id = item.optString("id").takeIf { it.isNotBlank() }
+                                        ?: throw IllegalArgumentException("Missing note id")
                                     val key = "$city::$id"
                                     // Preserve existing edits and tombstones on retries.
                                     if (dao.findAny(key) != null) {
