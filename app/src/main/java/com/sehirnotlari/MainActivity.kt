@@ -16,6 +16,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.provider.Settings
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -46,6 +47,7 @@ import java.util.TimeZone
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
+    private lateinit var releaseUpdater: GithubReleaseUpdater
     private var selectedCityForPdf: String? = null
 
     // Media
@@ -108,12 +110,23 @@ class MainActivity : AppCompatActivity() {
         if (uri != null) extractTextFromPdf(uri) else webView.evaluateJavascript("toast('PDF seçimi iptal edildi')", null)
     }
 
+    private val unknownSourcesLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (::releaseUpdater.isInitialized) releaseUpdater.onInstallPermissionResult()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         createNotificationChannel()
         webView = findViewById(R.id.webView)
+        releaseUpdater = GithubReleaseUpdater(
+            activity = this,
+            webView = { webView },
+            requestInstallPermission = { openUnknownInstallSources() }
+        )
         setupWebView()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -219,7 +232,14 @@ class MainActivity : AppCompatActivity() {
             loadWithOverviewMode = true
             setGeolocationEnabled(true)
         }
-        webView.webViewClient = WebViewClient()
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                if (url != null && url.contains("index.html")) {
+                    releaseUpdater.onWebViewReady()
+                }
+            }
+        }
         webView.addJavascriptInterface(WebAppInterface(this), "Android")
         webView.webChromeClient = object : WebChromeClient() {
             override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
@@ -239,6 +259,14 @@ class MainActivity : AppCompatActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
+    }
+
+    private fun openUnknownInstallSources() {
+        val intent = Intent(
+            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            Uri.parse("package:$packageName")
+        )
+        unknownSourcesLauncher.launch(intent)
     }
 
     private fun showExitConfirmation() {
@@ -458,6 +486,21 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 runOnUiThread { webView.evaluateJavascript("toast('❌ Firebase hazır değil')", null) }
             }
+        }
+
+        @JavascriptInterface
+        fun checkForUpdate() {
+            releaseUpdater.checkForUpdate()
+        }
+
+        @JavascriptInterface
+        fun downloadUpdate() {
+            releaseUpdater.downloadUpdate()
+        }
+
+        @JavascriptInterface
+        fun installUpdate() {
+            releaseUpdater.installDownloaded()
         }
     }
 }
