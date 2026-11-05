@@ -71,7 +71,7 @@ class RoomNoteWriteSequencer(
         ticket: Long,
         requestId: String? = null,
     ): RoomWriteAck {
-        val key = "$city::$noteId"
+        val key = RoomNoteKeys.key(city, noteId)
         return mutex.withLock {
             requestId?.let { id -> recentRequests[id]?.let { return@withLock it } }
             val existing = store.findAny(key)
@@ -106,7 +106,7 @@ class RoomNoteWriteSequencer(
     }
 
     suspend fun delete(city: String, noteId: String, ticket: Long, requestId: String? = null): RoomWriteAck {
-        val key = "$city::$noteId"
+        val key = RoomNoteKeys.key(city, noteId)
         return mutex.withLock {
             requestId?.let { id -> recentRequests[id]?.let { return@withLock it } }
             val existing = store.findAny(key)

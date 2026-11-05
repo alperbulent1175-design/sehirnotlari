@@ -125,3 +125,61 @@ Yeni `RoomNoteWriteRestartTest` (8):
 3. **`updatedAt` artık sıralama bileti.** Duvar saatine çok yakın, ama saat geri alındıysa gerçek zamandan ileride olabilir. Gelecekteki bulut eşitlemesi bunu “son değişiklik zamanı” diye yorumlamamalı.
 4. **Gecikmiş sonuç geri bildirimi.** Activity yeniden oluşursa eski isteğin sonucu yeni sayfaya iletilmez; yeni sayfa o isteği beklemediği için kullanıcıya hata gösterilmez, yalnız Logcat’e düşer.
 5. Önceki riskler sürüyor: `isAI` alanı yok, JSON içe aktarma gölge upsert kullanıyor, `Date.now()` kimlik çakışması, Room ana kaynak değil.
+
+## P3 — Not kimliği güvenliği (6 Kasım 2026)
+
+Başlangıç: `933ff7aee2fb6db3037cce75e916946e0a540155`. Push/merge yok. `main` değişmedi. Otomatik aktarım kapalı. Not veya `localStorage` silinmedi. Room şeması sürüm 1; değişmedi. Anahtar biçimi `city::id` aynen kaldı.
+
+### Tespitler
+1. **Aynı milisaniyede çakışma:** yeni not kimliği iki yerde `Date.now()` ile üretiliyordu (elle not ekleme `ba` ve yapay zekâ notu `confirmAI`). Aynı milisaniyede iki not aynı kimliği alıp Room’da aynı `city::id` satırına düşebiliyordu; düzenleme/silme yanlış notu etkileyebiliyordu.
+2. **Karışık kimlik türleri:** `onclick` şablonları kimliği tırnaksız gömüyordu (`delNote('Bursa',${n.id})`). Metin kimlikli içe aktarılmış notlarda bu sözdizimi hatası ya da başka bir değişkene başvuru demekti. Aramalar `===` kullandığından `"123"` ile `123` eşleşmiyordu.
+3. **İçe aktarma / bulut geri yükleme:** tekrar kontrolü `Set.has` ile türe duyarlıydı (`"123"` ≠ `123`), aynı dosyadaki tekrarları ayıklamıyordu; kimliksiz veya nesne olmayan bir kayıt tüm içe aktarmayı düşürebiliyor ya da Room tarafında hata veriyordu.
+4. **Kotlin köprüsü:** `upsertRoomNote` `optString("id")` kullandığından `null` kimlik `"null"` anahtarına dönüşüyordu. `requestRoomNotes` her sayısal metni `Long` olarak gönderiyordu; 2^53 üzerindeki değerler JS’te hassasiyet kaybederdi.
+
+### Uygulanan çözüm
+- **`app/src/main/assets/note-ids.js`** (yeni, ES5, `index.html` içinde Leaflet’ten sonra yüklenir):
+  - `nextNoteId(DB)`: `Date.now() * 1000 + rastgele(0..999)`; oturum içinde kesin artan (`lastIssued`) ve tüm şehirlerdeki mevcut kimliklerle karşılaştırılarak boş olan ilk değere kayar. Sonuç her zaman `Number.MAX_SAFE_INTEGER` altında tam sayıdır (2026 için ~1,76·10^15). Eski `Date.now()` kimliklerinden büyük olduğu için sayısal sıralama korunur.
+  - `sameId(a, b)`: `String(a) === String(b)`; `null`/`undefined` asla eşleşmez. Room anahtarı da `String(note.id)` olduğundan JS ve Room aynı kimliği görür.
+  - `idArg(id)`: sayı aynen, metin `JSON.stringify` + HTML öznitelik kaçışıyla `onclick` içine güvenle gömülür.
+  - `mergeNotes(DB, gelen, onAdded)`: JSON içe aktarma ve bulut geri yükleme ortak yolu. Var olan notlara dokunmaz; şehir içinde metin olarak aynı kimliği (dosya içi tekrarlar dahil) atlar; nesne olmayan kayıtları atlar; yalnız eksik/boş kimliğe yeni kimlik verir. Kullanılabilir eski kimlikler (negatif, kesirli, uzun metin dahil) **yeniden numaralandırılmaz**.
+- **`index.html`:** iki `Date.now()` kimlik üretimi `NoteIds.nextNoteId(DB)` oldu. `delNote`, `toggleFav`, `openEdit`, `saveEdit`, `editStars`, `shareNote` aramaları `NoteIds.sameId` kullanır. Not ve favori listelerindeki tüm `onclick` kimlikleri `NoteIds.idArg`. Favori sıralaması `NoteIds.sortValue`. `importJSON` ve `importFromCloud` `NoteIds.mergeNotes` kullanır. Mevcut `localStorage` verisi okunurken hiçbir kimlik değiştirilmez.
+- **`RoomNoteKeys.kt`** (yeni): `key(city, id)`, JS `String(id)` ile aynı metni veren `idFromJson` (boş, `null`, NaN, nesne reddedilir) ve yalnız ±(2^53−1) aralığındaki kanonik tam sayıları sayı olarak, diğerlerini metin olarak döndüren `webViewId`. `LegacyRoomImporter`, `RoomNoteWriteSequencer`, `MainActivity.upsertRoomNote` ve `requestRoomNotes` bunu kullanır.
+
+### Akış kontrolü
+| Akış | Sonuç |
+| :--- | :--- |
+| Kaydet (elle / yapay zekâ) | Çakışmasız sayısal kimlik; Room anahtarı `city::<kimlik>` |
+| Düzenle / yıldız / favori / paylaş | Eski sayı, yeni sayı ve metin kimlikler `sameId` ile bulunur |
+| Sil | `String(id)` Room’a gider; tombstone kuralları P1/P2’deki gibi |
+| JSON içe aktarma | Mevcut not korunur; `"123"`/`123` tekrar sayılır; kimliksize yeni kimlik |
+| Bulut geri yükleme | İçe aktarmayla aynı `mergeNotes` yolu |
+
+### Derleme ve test
+| Komut | Sonuç |
+| :--- | :--- |
+| `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest` | **BUILD SUCCESSFUL** (3m 12s). 54 test, 0 başarısız, 0 atlanan. |
+
+Test bağımlılığı olarak `org.mozilla:rhino:1.7.15` eklendi (yalnız `testImplementation`; APK’ya girmez). `index.html` içindeki ana betik ve `note-ids.js` ayrıca `node --check` ile sözdizimi denetiminden geçti.
+
+Yeni `NoteIdsScriptTest` (10, gerçek `note-ids.js` Rhino’da çalışır):
+- Aynı milisaniyede 2000 not benzersiz, güvenli tam sayı kimlik alır.
+- Yeni kimlik başka şehirlerdeki mevcut kimlikleri atlar.
+- Yeni kimlikler eski `Date.now()` kimliklerinden büyüktür.
+- `sameId` sayı/metin karışımını doğru eşler; `null` / `undefined` eşleşmez.
+- `idArg` tırnak, `<`, `&` içeren metni kaçışlar ve öznitelikten geri çözülünce aynı değeri verir.
+- İçe aktarma mevcut notu ezmez, `"123"`/`123` ve dosya içi tekrarları atlar.
+- Kimliksiz/boş kimlikli kayıtlara benzersiz kimlik verilir; bozuk kayıtlar atlanır.
+- Kullanılabilir eski kimlikler (negatif, kesirli, uzun metin, boşluklu metin) değişmez.
+- Karışık kimliklerle kaydet → düzenle → sil akışı.
+- Yeni kimliğin `String()` biçimi Room anahtarı ve `webViewId` ile birebir eşleşir.
+
+Yeni `RoomNoteKeysTest` (7): eski sayısal anahtar, yeni mikro-ölçekli kimliğin sayı olarak dönüşü, metin/öndeki sıfırlı/2^53 üstü kimliklerin metin kalması, geçersiz kimliklerin reddi, tam sayı `Double` biçimi, aynı milisaniyedeki iki notun ayrı Room satırı olması, sıralayıcının eski ve yeni kimlikler için aynı anahtarı kullanması.
+
+`RoomMigrationGuardTest` +1: `index.html` `note-ids.js` yükler, `id: Date.now()` içermez, tırnaksız `${n.id}` gömmez, `.id ===` / `.id !==` karşılaştırması kalmamıştır, iki içe aktarma yolu `mergeNotes` kullanır.
+
+### Kalan riskler
+1. **Cihaz duman testi yok.** WebView’da tıklama/düzenleme/silme gerçek cihazda denenmedi; JS mantığı Rhino’da, sözdizimi Node’da doğrulandı.
+2. **Cihazlar arası çakışma** artık çok düşük olasılıklı ama sıfır değil: iki cihaz aynı milisaniyede aynı rastgele son ekle (1/1000) not üretirse ve sonra notlar birleştirilirse ikincisi tekrar sayılıp atlanır. Çoklu cihaz eşitlemesinde UUID veya cihaz kimliği eklemek gerekir.
+3. **Mevcut çakışmış kimlikler** (P3 öncesi aynı milisaniyede oluşmuş iki not) otomatik ayrıştırılmaz; düzenleme ilk eşleşeni etkiler, silme ikisini birden kaldırır (P3 öncesiyle aynı davranış). Toplu yeniden numaralandırma kurala aykırı olduğu için yapılmadı.
+4. **Kayan nokta kimlikler:** `1e21` gibi üstel biçimli içe aktarılmış sayılarda JS (`"1e+21"`) ve Kotlin (`"1.0E21"`) metinleri farklıdır; gerçek veride beklenmez.
+5. Önceki riskler sürüyor: `isAI` Room’da yok, Activity yeniden oluşursa köprü sonucu kaybolur, `updatedAt` sıralama biletidir, Room ana kaynak değil.

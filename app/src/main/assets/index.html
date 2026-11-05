@@ -510,6 +510,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
 <div class="toast" id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="note-ids.js"></script>
 <script>
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 let _tt;const toast=m=>{const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2500);};
@@ -809,7 +810,7 @@ function confirmAI(){
   if(!city || !pendingAI) return;
   if(!DB[city]) DB[city] = [];
   const aiNote={
-    id: Date.now(),
+    id: NoteIds.nextNoteId(DB),
     title: pendingAI.title,
     content: pendingAI.content,
     category: 'Genel',
@@ -832,7 +833,7 @@ function confirmAI(){
 // Stars
 function initStars(id,cb){document.getElementById(id).querySelectorAll('.star').forEach(s=>s.addEventListener('click',()=>{const v=+s.getAttribute('data-v');document.getElementById(id).querySelectorAll('.star').forEach((x,i)=>x.classList.toggle('on',i<v));cb(v);}));}
 initStars('newStars',v=>{selStar=v;document.getElementById('starLabel').textContent='★'.repeat(v);});
-initStars('editStars',v=>{const n=DB[editingCity]?.find(n=>n.id===editingId);if(n){n.star=v;sv();mirrorNewNoteToRoom(editingCity,n);renderNotes();}});
+initStars('editStars',v=>{const n=DB[editingCity]?.find(n=>NoteIds.sameId(n.id,editingId));if(n){n.star=v;sv();mirrorNewNoteToRoom(editingCity,n);renderNotes();}});
 document.querySelectorAll('.color-opt').forEach(o=>o.addEventListener('click',()=>{document.querySelectorAll('.color-opt').forEach(x=>x.classList.remove('sel'));o.classList.add('sel');selColor=o.getAttribute('data-col');}));
 document.getElementById('cats').onclick=e=>{const c=e.target.closest('.cat');if(!c)return;document.querySelectorAll('.cat').forEach(x=>x.classList.remove('sel'));c.classList.add('sel');selCat=c.getAttribute('data-c');};
 
@@ -998,7 +999,7 @@ document.getElementById('ba').onclick=()=>{
   const t=document.getElementById('nt').value.trim(),c=document.getElementById('nc').value.trim();
   if(!t){toast('Lütfen bir başlık girin.');return;}
   if(!DB[curCity])DB[curCity]=[];
-  const newNote={id:Date.now(),title:t,content:c,category:selCat,star:selStar,color:selColor,fav:false,date:new Date().toLocaleDateString('tr-TR',{day:'2-digit',month:'short',year:'numeric'})};
+  const newNote={id:NoteIds.nextNoteId(DB),title:t,content:c,category:selCat,star:selStar,color:selColor,fav:false,date:new Date().toLocaleDateString('tr-TR',{day:'2-digit',month:'short',year:'numeric'})};
   DB[curCity].push(newNote);
   mirrorNewNoteToRoom(curCity,newNote);
   sv();document.getElementById('nt').value='';document.getElementById('nc').value='';
@@ -1021,8 +1022,8 @@ function mirrorDeletedNoteToRoom(city,id){
   try{window.Android.deleteRoomNote(city,String(id),requestId);}
   catch(e){roomDeletePending.delete(requestId);console.warn('Room shadow-delete unavailable',e);toast('⚠️ Room silme işlemi gönderilemedi');}
 }
-function delNote(city,id){if(!DB[city])return;DB[city]=DB[city].filter(n=>n.id!==id);if(!DB[city].length)delete DB[city];sv();mirrorDeletedNoteToRoom(city,id);renderNotes();updateStyles();updateSum();toast('Not silindi');}
-function toggleFav(city,id){const n=DB[city]?.find(n=>n.id===id);if(!n)return;n.fav=!n.fav;sv();mirrorNewNoteToRoom(city,n);renderNotes();updateSum();if(document.getElementById('tab-favs').classList.contains('on')) renderFavs();toast(n.fav?'❤️ Favorilere eklendi':'Favorilerden çıkarıldı');}
+function delNote(city,id){if(!DB[city])return;DB[city]=DB[city].filter(n=>!NoteIds.sameId(n.id,id));if(!DB[city].length)delete DB[city];sv();mirrorDeletedNoteToRoom(city,id);renderNotes();updateStyles();updateSum();toast('Not silindi');}
+function toggleFav(city,id){const n=DB[city]?.find(n=>NoteIds.sameId(n.id,id));if(!n)return;n.fav=!n.fav;sv();mirrorNewNoteToRoom(city,n);renderNotes();updateSum();if(document.getElementById('tab-favs').classList.contains('on')) renderFavs();toast(n.fav?'❤️ Favorilere eklendi':'Favorilerden çıkarıldı');}
 
 function renderFavs(){
   const fl=document.getElementById('fl'),fb=document.getElementById('fb');
@@ -1037,22 +1038,22 @@ function renderFavs(){
     fl.innerHTML = '<div class="emp"><span class="eico">❤️</span>Henüz favori notun yok.</div>';
     return;
   }
-  allFavs.sort((a,b) => b.id - a.id);
+  allFavs.sort((a,b) => NoteIds.sortValue(b.id) - NoteIds.sortValue(a.id));
   fl.innerHTML = allFavs.map(n => `<div class="ni" style="border-left-color:${n.color || BOLGE_INFO[IL_BOLGE[n.cityName]||'ic'].c}">
     <div class="nih"><div class="nit">📍 ${esc(n.cityName)}: ${n.isAI ? '✨' : ''}${CEMOJI[n.category]||'📝'} ${esc(n.title)}</div><div class="nid">${n.date}</div></div>
     ${n.content?`<div class="nic">${esc(n.content)}</div>`:''}
     <div class="nacts">
       <button class="nbtn" onclick="openModal('${esc(n.cityName)}','${IL_BOLGE[n.cityName]||'ic'}')">🏙️ Şehre Git</button>
-      <button class="nbtn" onclick="toggleFav('${esc(n.cityName)}',${n.id})">💔 Çıkar</button>
-      <button class="nbtn" onclick="shareNote('${esc(n.cityName)}', ${n.id})">📤 Paylaş</button>
+      <button class="nbtn" onclick="toggleFav('${esc(n.cityName)}',${NoteIds.idArg(n.id)})">💔 Çıkar</button>
+      <button class="nbtn" onclick="shareNote('${esc(n.cityName)}', ${NoteIds.idArg(n.id)})">📤 Paylaş</button>
     </div></div>`).join('');
 }
-function openEdit(city,id){const n=DB[city]?.find(n=>n.id===id);if(!n)return;editingCity=city;editingId=id;document.getElementById('eTitle').value=n.title;document.getElementById('eContent').value=n.content||'';document.getElementById('editStars').querySelectorAll('.star').forEach((s,i)=>s.classList.toggle('on',i<(n.star||0)));document.getElementById('editOv').classList.add('open');}
-function saveEdit(){const n=DB[editingCity]?.find(n=>n.id===editingId);if(!n)return;n.title=document.getElementById('eTitle').value.trim()||n.title;n.content=document.getElementById('eContent').value.trim();sv();mirrorNewNoteToRoom(editingCity,n);renderNotes();updateSum();closeEdit();toast('Not güncellendi ✓');}
+function openEdit(city,id){const n=DB[city]?.find(n=>NoteIds.sameId(n.id,id));if(!n)return;editingCity=city;editingId=id;document.getElementById('eTitle').value=n.title;document.getElementById('eContent').value=n.content||'';document.getElementById('editStars').querySelectorAll('.star').forEach((s,i)=>s.classList.toggle('on',i<(n.star||0)));document.getElementById('editOv').classList.add('open');}
+function saveEdit(){const n=DB[editingCity]?.find(n=>NoteIds.sameId(n.id,editingId));if(!n)return;n.title=document.getElementById('eTitle').value.trim()||n.title;n.content=document.getElementById('eContent').value.trim();sv();mirrorNewNoteToRoom(editingCity,n);renderNotes();updateSum();closeEdit();toast('Not güncellendi ✓');}
 function closeEdit(){document.getElementById('editOv').classList.remove('open');editingCity=null;editingId=null;}
 document.getElementById('editOv').addEventListener('click',e=>{if(e.target===document.getElementById('editOv'))closeEdit();});
 function shareNote(city, id) {
-  const n = DB[city || curCity]?.find(x => x.id === id);
+  const n = DB[city || curCity]?.find(x => NoteIds.sameId(x.id, id));
   if (!n) return;
   const text = `📌 *${city || curCity}* (${n.date})\n${CEMOJI[n.category] || '📝'} ${n.category}\n\n*${n.title}*\n${n.content || ''}\n\n#TürkiyeŞehirNotları`;
   if (window.Android && window.Android.shareNote) {
@@ -1071,10 +1072,10 @@ function renderNotes(){
     ${n.content?`<div class="nic">${esc(n.content)}</div>`:''}
     ${n.star?`<div class="nstars" style="color:#f59e0b">${'★'.repeat(n.star)}${'☆'.repeat(5-n.star)}</div>`:''}
     <div class="nacts">
-      <button class="nbtn del" onclick="delNote('${esc(curCity)}',${n.id})">🗑️ Sil</button>
-      <button class="nbtn" onclick="openEdit('${esc(curCity)}',${n.id})">✏️ Düzenle</button>
-      <button class="nbtn" onclick="toggleFav('${esc(curCity)}',${n.id})">${n.fav?'★':'☆'} Favori</button>
-      <button class="nbtn" onclick="shareNote('${esc(curCity)}', ${n.id})">📤 Paylaş</button>
+      <button class="nbtn del" onclick="delNote('${esc(curCity)}',${NoteIds.idArg(n.id)})">🗑️ Sil</button>
+      <button class="nbtn" onclick="openEdit('${esc(curCity)}',${NoteIds.idArg(n.id)})">✏️ Düzenle</button>
+      <button class="nbtn" onclick="toggleFav('${esc(curCity)}',${NoteIds.idArg(n.id)})">${n.fav?'★':'☆'} Favori</button>
+      <button class="nbtn" onclick="shareNote('${esc(curCity)}', ${NoteIds.idArg(n.id)})">📤 Paylaş</button>
     </div></div>`).join('');
 }
 
@@ -1119,7 +1120,7 @@ function renderStats(){
 }
 
 function exportJSON(){const b=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`turkiye-notlari-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);toast('📥 JSON indirildi');}
-function importJSON(inp){const f=inp.files[0];if(!f)return;const reader=new FileReader();reader.onload=e=>{try{const d=JSON.parse(e.target.result);let cnt=0;Object.entries(d).forEach(([c,ns])=>{if(!Array.isArray(ns))return;if(!DB[c])DB[c]=[];const ids=new Set(DB[c].map(n=>n.id));ns.forEach(n=>{if(!ids.has(n.id)){DB[c].push(n);mirrorNewNoteToRoom(c,n);cnt++;}});});sv();updateStyles();updateSum();toast(`✅ ${cnt} not içe aktarıldı`);}catch{toast('❌ Geçersiz dosya');}inp.value='';};reader.readAsText(f);}
+function importJSON(inp){const f=inp.files[0];if(!f)return;const reader=new FileReader();reader.onload=e=>{try{const d=JSON.parse(e.target.result);const cnt=NoteIds.mergeNotes(DB,d,mirrorNewNoteToRoom);sv();updateStyles();updateSum();toast(`✅ ${cnt} not içe aktarıldı`);}catch{toast('❌ Geçersiz dosya');}inp.value='';};reader.readAsText(f);}
 function emailNotes(){const cs=Object.keys(DB).filter(c=>DB[c]&&DB[c].length);if(!cs.length){toast('Gönderilecek not yok.');return;}let body='TÜRKİYE ŞEHİR NOTLARIM\n\n';cs.forEach(c=>{body+=`== ${c} ==\n`;DB[c].forEach(n=>{body+=`[${n.category}] ${n.title}\n${n.content||''}\n${n.date}\n\n`;});});window.location.href=`mailto:?subject=Türkiye Şehir Notlarım&body=${encodeURIComponent(body)}`;}
 function clearAll(){if(!confirm('Tüm notlar silinecek. Emin misiniz?'))return;const oldDB=DB;DB={};sv();Object.entries(oldDB).forEach(([city,notes])=>{if(Array.isArray(notes))notes.forEach(note=>mirrorDeletedNoteToRoom(city,note.id));});updateStyles();updateSum();toast('Tüm notlar yerel olarak silindi');}
 
@@ -1140,15 +1141,7 @@ function cloudRestore() {
 function importFromCloud(json) {
     try {
         const d = JSON.parse(json);
-        let cnt = 0;
-        Object.entries(d).forEach(([c, ns]) => {
-            if (!Array.isArray(ns)) return;
-            if (!DB[c]) DB[c] = [];
-            const ids = new Set(DB[c].map(n => n.id));
-            ns.forEach(n => {
-                if (!ids.has(n.id)) { DB[c].push(n); mirrorNewNoteToRoom(c,n); cnt++; }
-            });
-        });
+        const cnt = NoteIds.mergeNotes(DB, d, mirrorNewNoteToRoom);
         sv(); updateStyles(); updateSum();
         toast(`✅ Buluttan ${cnt} yeni not yüklendi`);
     } catch { toast('❌ Hatalı bulut verisi'); }

@@ -5,6 +5,7 @@ import com.sehirnotlari.data.LegacyRoomImporter
 import com.sehirnotlari.data.RoomBridgeScripts
 import com.sehirnotlari.data.RoomNoteDraft
 import com.sehirnotlari.data.RoomNoteImportStore
+import com.sehirnotlari.data.RoomNoteKeys
 import com.sehirnotlari.data.RoomNoteWriteSequencer
 import com.sehirnotlari.data.toBridgeError
 import com.sehirnotlari.data.toBridgeSuccess
@@ -358,7 +359,7 @@ class MainActivity : AppCompatActivity() {
             RoomNoteWriteSequencer.writeScope.launch {
                 try {
                     val item = JSONObject(noteJson)
-                    val id = item.optString("id").takeIf { it.isNotBlank() }
+                    val id = RoomNoteKeys.idFromJson(item.opt("id"))
                         ?: throw IllegalArgumentException("Missing note id")
                     val ack = sequencer.upsert(
                         city,
@@ -391,7 +392,7 @@ class MainActivity : AppCompatActivity() {
                     notesDatabase.notes().allActive().forEach { note ->
                         val arr = result.optJSONArray(note.city) ?: JSONArray().also { result.put(note.city, it) }
                         arr.put(JSONObject().apply {
-                            put("id", note.id.removePrefix("${note.city}::").toLongOrNull() ?: note.id.removePrefix("${note.city}::"))
+                            put("id", RoomNoteKeys.webViewId(note))
                             put("title", note.title)
                             put("content", note.content)
                             put("category", note.category)

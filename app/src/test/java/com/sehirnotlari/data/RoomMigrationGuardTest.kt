@@ -29,6 +29,16 @@ class RoomMigrationGuardTest {
         assertFalse(source.contains("roomWriteMutex"))
     }
 
+    @Test
+    fun webViewCreatesNotesThroughCollisionSafeIds() {
+        val html = sourceFile("src/main/assets/index.html").readText()
+        assertTrue(html.contains("<script src=\"note-ids.js\"></script>"))
+        assertFalse(Regex("""\bid\s*:\s*Date\.now\(\)""").containsMatchIn(html))
+        assertFalse(html.contains("\${n.id})"))
+        assertFalse(Regex("""\.id\s*[!=]==""").containsMatchIn(html))
+        assertTrue(Regex("""NoteIds\.mergeNotes\(""").findAll(html).count() >= 2)
+    }
+
     private fun sourceFile(relative: String): File {
         val candidates = listOf(File(relative), File("app/$relative"))
         return candidates.first { it.isFile }

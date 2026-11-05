@@ -1,5 +1,12 @@
 # DEVAM
 
+## 2026-11-06 — P3 not kimliği güvenliği
+
+- **Dal:** `feature/room-migration-validation` (başlangıç `933ff7a`, `main` dokunulmadı, push/merge yok)
+- **Durum:** tamamlandı
+- **Ne yapıldı:** İki `Date.now()` kimlik üretimi `note-ids.js` içindeki `NoteIds.nextNoteId` ile değişti (ms×1000 + rastgele, oturumda artan, mevcut kimliklerden kaçınan, güvenli tam sayı). Aramalar `sameId`, `onclick` kimlikleri `idArg`, JSON içe aktarma ve bulut geri yükleme `mergeNotes` kullanıyor. Kotlin `RoomNoteKeys` ile `city::id` anahtarı ve WebView’a dönen kimlik tek yerde. Eski kimlikler değişmedi, şema değişmedi. `assembleDebug` + `testDebugUnitTest` 54/54 geçti (Rhino ile JS testleri dahil). Rapor güncellendi.
+- **Sonraki tek somut adım:** Cihaz/AVD’de karışık kimlikli notlarla kaydet–düzenle–sil–içe aktar duman testi; çoklu cihaz eşitlemesinden önce UUID/cihaz kimliği kararı.
+
 ## 2026-11-06 — P2 yaşam döngüsü sıralaması
 
 - **Dal:** `feature/room-migration-validation` (başlangıç `9e218118`, `main` dokunulmadı, push/merge yok)
