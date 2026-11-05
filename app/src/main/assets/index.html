@@ -922,6 +922,25 @@ let msy=0;
 document.getElementById('modalEl').addEventListener('touchstart',e=>msy=e.touches[0].clientY,{passive:true});
 document.getElementById('modalEl').addEventListener('touchend',e=>{if(e.changedTouches[0].clientY-msy>80)closeModal();},{passive:true});
 
+// Read-only startup snapshot: compare Room data without replacing localStorage.
+// This deliberately avoids resurrecting notes deleted through the legacy UI.
+let roomPilotSnapshot=null;
+window.onRoomNotesReady=function(snapshot){
+  if(!snapshot || typeof snapshot!=='object' || Array.isArray(snapshot)){
+    console.warn('Room pilot: invalid snapshot');return;
+  }
+  roomPilotSnapshot=snapshot;
+  const count=Object.values(snapshot).reduce((n,notes)=>n+(Array.isArray(notes)?notes.length:0),0);
+  console.info('Room pilot snapshot loaded:',count,'notes; legacy storage unchanged');
+};
+function requestRoomPilotSnapshot(){
+  if(window.Android && typeof window.Android.requestRoomNotes==='function'){
+    try{window.Android.requestRoomNotes();}
+    catch(e){console.warn('Room pilot snapshot request failed',e);}
+  }
+}
+window.addEventListener('load',requestRoomPilotSnapshot);
+
 // Room shadow-write pilot: localStorage remains the authoritative source until
 // startup hydration, delete and edit flows have passed Android device tests.
 const roomPilotPending=new Map();
