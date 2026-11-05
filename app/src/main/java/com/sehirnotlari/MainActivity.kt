@@ -327,7 +327,9 @@ class MainActivity : AppCompatActivity() {
             if (city.isBlank() || id.isBlank()) return
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    notesDatabase.notes().softDelete("$city::$id")
+                    roomWriteMutex.withLock {
+                        notesDatabase.notes().softDelete("$city::$id")
+                    }
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Room delete failed", e)
                 }
@@ -358,14 +360,14 @@ class MainActivity : AppCompatActivity() {
                     }
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            "window.onRoomWriteResult && window.onRoomWriteResult(\u0024{JSONObject.quote(requestId)},true,null);", null
+                            "window.onRoomWriteResult && window.onRoomWriteResult(${JSONObject.quote(requestId)},true,null);", null
                         )
                     }
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Room note upsert failed", e)
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            "window.onRoomWriteResult && window.onRoomWriteResult(\u0024{JSONObject.quote(requestId)},false,\u0024{JSONObject.quote(e.message ?: "Room write failed")});", null
+                            "window.onRoomWriteResult && window.onRoomWriteResult(${JSONObject.quote(requestId)},false,${JSONObject.quote(e.message ?: "Room write failed")});", null
                         )
                     }
                 }
