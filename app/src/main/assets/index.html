@@ -927,6 +927,10 @@ document.getElementById('modalEl').addEventListener('touchend',e=>{if(e.changedT
 // Read-only startup snapshot: compare Room data without replacing localStorage.
 // This deliberately avoids resurrecting notes deleted through the legacy UI.
 let roomPilotSnapshot=null;
+window.onRoomNotesError=function(message){
+  console.error('Room pilot snapshot failed:',message);
+  toast('⚠️ Room verileri okunamadı; mevcut notlar korunuyor');
+};
 window.onRoomNotesReady=function(snapshot){
   if(!snapshot || typeof snapshot!=='object' || Array.isArray(snapshot)){
     console.warn('Room pilot: invalid snapshot');return;
