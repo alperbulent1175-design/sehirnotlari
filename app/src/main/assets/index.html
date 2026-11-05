@@ -927,6 +927,16 @@ document.getElementById('modalEl').addEventListener('touchend',e=>{if(e.changedT
 // Read-only startup snapshot: compare Room data without replacing localStorage.
 // This deliberately avoids resurrecting notes deleted through the legacy UI.
 let roomPilotSnapshot=null;
+// The legacy import is intentionally not triggered automatically.
+window.onRoomImportResult=function(ok,inserted,skipped,error){
+  if(!ok){
+    console.error('Room pilot import failed:',error);
+    toast('⚠️ Room aktarımı başarısız; mevcut notlar korunuyor');
+    return;
+  }
+  console.info('Room pilot import complete:',{inserted,skipped});
+  toast('Room aktarımı: '+inserted+' yeni, '+skipped+' mevcut not');
+};
 let roomPilotReadTimer=null;
 function roomPilotReadFailed(message){
   if(roomPilotReadTimer!==null){clearTimeout(roomPilotReadTimer);roomPilotReadTimer=null;}
