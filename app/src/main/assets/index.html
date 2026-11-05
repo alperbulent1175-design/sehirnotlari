@@ -606,7 +606,12 @@ async function initMap(){
   L.control.zoom({position:'bottomright'}).addTo(lmap);
   const addTile=()=>{
     if(lmap._tile)lmap.removeLayer(lmap._tile);
-    lmap._tile=L.tileLayer(isDark()?'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png':'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',{attribution:'© <a href="https://carto.com/">CARTO</a> © <a href="https://www.openstreetmap.org/copyright">OSM</a>',subdomains:'abcd',maxZoom:19,detectRetina:true}).addTo(lmap);
+    // CARTO free basemaps now return blank/API-key stubs; use keyless providers.
+    if(isDark()){
+      lmap._tile=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles &copy; <a href="https://www.esri.com/">Esri</a>',maxZoom:16,detectRetina:true}).addTo(lmap);
+    }else{
+      lmap._tile=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',maxZoom:19,detectRetina:true}).addTo(lmap);
+    }
   };
   addTile();lmap._addTile=addTile;
 
