@@ -309,7 +309,8 @@ class MainActivity : AppCompatActivity() {
                                     category = item.optString("category", "Genel"),
                                     star = item.optInt("star").coerceIn(0, 5),
                                     color = item.optString("color"),
-                                    favorite = item.optBoolean("fav")
+                                    favorite = item.optBoolean("fav"),
+                                    dateLabel = item.optString("date")
                                 ))
                             }
                         }
@@ -335,6 +336,7 @@ class MainActivity : AppCompatActivity() {
                             put("star", note.star)
                             put("color", note.color)
                             put("fav", note.favorite)
+                            put("date", note.dateLabel)
                         })
                     }
                     withContext(Dispatchers.Main) {
