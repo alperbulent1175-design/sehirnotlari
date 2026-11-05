@@ -419,6 +419,11 @@ class MainActivity : AppCompatActivity() {
                     }
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Room read failed", e)
+                    withContext(Dispatchers.Main) {
+                        webView.evaluateJavascript(
+                            "window.onRoomNotesError && window.onRoomNotesError(${JSONObject.quote(e.message ?: "Room read failed")});", null
+                        )
+                    }
                 }
             }
         }
