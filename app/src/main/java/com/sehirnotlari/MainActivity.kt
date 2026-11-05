@@ -323,15 +323,25 @@ class MainActivity : AppCompatActivity() {
 
         // A deletion is recorded as a tombstone for future cloud synchronization.
         @JavascriptInterface
-        fun deleteRoomNote(city: String, id: String) {
-            if (city.isBlank() || id.isBlank()) return
+        fun deleteRoomNote(city: String, id: String, requestId: String) {
+            if (city.isBlank() || id.isBlank() || requestId.isBlank()) return
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     roomWriteMutex.withLock {
                         notesDatabase.notes().softDelete("$city::$id")
                     }
+                    withContext(Dispatchers.Main) {
+                        webView.evaluateJavascript(
+                            "window.onRoomDeleteResult && window.onRoomDeleteResult(${JSONObject.quote(requestId)},true,null);", null
+                        )
+                    }
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Room delete failed", e)
+                    withContext(Dispatchers.Main) {
+                        webView.evaluateJavascript(
+                            "window.onRoomDeleteResult && window.onRoomDeleteResult(${JSONObject.quote(requestId)},false,${JSONObject.quote(e.message ?: "Room delete failed")});", null
+                        )
+                    }
                 }
             }
         }
