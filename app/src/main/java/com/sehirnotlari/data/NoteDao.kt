@@ -23,6 +23,7 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE deletedAt IS NULL AND (title LIKE '%' || :term || '%' OR content LIKE '%' || :term || '%') ORDER BY updatedAt DESC")
     suspend fun search(term: String): List<NoteEntity>
 
+    // REPLACE is last-writer-wins. RoomNoteWriteSequencer must drop stale tickets first.
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(note: NoteEntity)
 

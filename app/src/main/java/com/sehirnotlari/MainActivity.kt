@@ -2,9 +2,13 @@ package com.sehirnotlari
 
 import com.sehirnotlari.data.CityNotesDatabase
 import com.sehirnotlari.data.LegacyRoomImporter
-import com.sehirnotlari.data.NoteEntity
 import com.sehirnotlari.data.RoomBridgeScripts
+import com.sehirnotlari.data.RoomNoteDraft
 import com.sehirnotlari.data.RoomNoteImportStore
+import com.sehirnotlari.data.RoomNoteWriteSequencer
+import com.sehirnotlari.data.RoomNoteWriteStore
+import com.sehirnotlari.data.toBridgeError
+import com.sehirnotlari.data.toBridgeSuccess
 import androidx.room.withTransaction
 import org.json.JSONArray
 import kotlinx.coroutines.sync.Mutex
@@ -58,6 +62,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private val roomWriteMutex = Mutex()
     private val notesDatabase by lazy { CityNotesDatabase.get(applicationContext) }
+    private val noteWriteSequencer by lazy {
+        RoomNoteWriteSequencer(
+            store = RoomNoteWriteStore(notesDatabase.notes()),
+            mutex = roomWriteMutex,
+        )
+    }
     private lateinit var releaseUpdater: GithubReleaseUpdater
     private var selectedCityForPdf: String? = null
 
@@ -336,21 +346,13 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun deleteRoomNote(city: String, id: String, requestId: String) {
             if (city.isBlank() || id.isBlank() || requestId.isBlank()) return
+            val ticket = noteWriteSequencer.nextTicket()
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    roomWriteMutex.withLock {
-                        val dao = notesDatabase.notes()
-                        val key = "$city::$id"
-                        if (dao.findAny(key) == null) {
-                            val now = System.currentTimeMillis()
-                            dao.upsert(NoteEntity(id = key, city = city, title = "", deletedAt = now, updatedAt = now, syncState = "PENDING"))
-                        } else {
-                            dao.softDelete(key)
-                        }
-                    }
+                    val ack = noteWriteSequencer.delete(city, id, ticket)
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            RoomBridgeScripts.deleteResult(requestId, true, null),
+                            RoomBridgeScripts.deleteResult(requestId, ack.toBridgeSuccess(), ack.toBridgeError()),
                             null
                         )
                     }
@@ -371,30 +373,29 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun upsertRoomNote(city: String, noteJson: String, requestId: String) {
             if (city.isBlank() || city.length > 120 || noteJson.length > 100_000 || requestId.length > 100) return
+            val ticket = noteWriteSequencer.nextTicket()
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val item = JSONObject(noteJson)
                     val id = item.optString("id").takeIf { it.isNotBlank() }
                         ?: throw IllegalArgumentException("Missing note id")
-                    roomWriteMutex.withLock {
-                        val dao = notesDatabase.notes()
-                        if (dao.findAny("$city::$id")?.deletedAt != null) {
-                            throw IllegalStateException("Deleted note cannot be restored by a stale write")
-                        }
-                        dao.upsert(NoteEntity(
-                            id = "$city::$id", city = city,
+                    val ack = noteWriteSequencer.upsert(
+                        city,
+                        id,
+                        RoomNoteDraft(
                             title = item.optString("title"),
                             content = item.optString("content"),
                             category = item.optString("category", "Genel"),
-                            star = item.optInt("star").coerceIn(0, 5),
+                            star = item.optInt("star"),
                             color = item.optString("color"),
                             favorite = item.optBoolean("fav"),
                             dateLabel = item.optString("date")
-                        ))
-                    }
+                        ),
+                        ticket
+                    )
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            RoomBridgeScripts.writeResult(requestId, true, null),
+                            RoomBridgeScripts.writeResult(requestId, ack.toBridgeSuccess(), ack.toBridgeError()),
                             null
                         )
                     }

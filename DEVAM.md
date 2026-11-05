@@ -1,5 +1,12 @@
 # DEVAM
 
+## 2026-11-06 — P1 yazma sırası
+
+- **Dal:** `feature/room-migration-validation` (başlangıç `6100501`, `main` dokunulmadı, push/merge yok)
+- **Durum:** tamamlandı
+- **Ne yapıldı:** Gecikmiş `upsertRoomNote` ezmesi tespit edildi. `RoomNoteWriteSequencer` bilet + tombstone koruması eklendi; not kimlikleri değişmedi. `assembleDebug` + `testDebugUnitTest` 27/27 geçti. Rapor güncellendi.
+- **Sonraki tek somut adım:** Cihaz/AVD duman testi; Room’u ana kaynak yapma.
+
 ## 2026-11-06 — Room aktarımı doğrulama
 
 - **Dal:** `feature/room-migration-validation` (`main` birleştirilmedi)
