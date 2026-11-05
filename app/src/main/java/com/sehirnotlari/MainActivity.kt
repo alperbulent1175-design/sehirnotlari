@@ -302,7 +302,8 @@ class MainActivity : AppCompatActivity() {
                             for (i in 0 until notes.length()) {
                                 val item = notes.optJSONObject(i) ?: continue
                                 val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
-                                if (dao.findAny("$city::$id")?.deletedAt != null) continue
+                                // Import only missing records: never overwrite edits or resurrect tombstones.
+                                if (dao.findAny("$city::$id") != null) continue
                                 dao.upsert(NoteEntity(
                                     id = "$city::$id", city = city,
                                     title = item.optString("title"),
