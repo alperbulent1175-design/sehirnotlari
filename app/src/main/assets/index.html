@@ -985,13 +985,21 @@ document.getElementById('ba').onclick=()=>{
   document.querySelectorAll('.color-opt').forEach((o,i)=>o.classList.toggle('sel',i===0));
   renderNotes();updateStyles();updateSum();toast(`${curCity} — not eklendi ✓`);
 };
+const roomDeletePending=new Set();
+window.onRoomDeleteResult=function(requestId,ok,error){
+  if(!roomDeletePending.has(requestId))return;
+  roomDeletePending.delete(requestId);
+  if(!ok){console.error('Room shadow-delete failed:',error);toast('⚠️ Yerel not silindi; Room silme işlemi başarısız');}
+};
 function mirrorDeletedNoteToRoom(city,id){
   if(!(window.Android&&typeof window.Android.deleteRoomNote==='function'))return;
-  try{window.Android.deleteRoomNote(city,String(id));}
-  catch(e){console.warn('Room shadow-delete unavailable',e);toast('⚠️ Room silme işlemi gönderilemedi');}
+  const requestId='delete-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+  roomDeletePending.add(requestId);
+  try{window.Android.deleteRoomNote(city,String(id),requestId);}
+  catch(e){roomDeletePending.delete(requestId);console.warn('Room shadow-delete unavailable',e);toast('⚠️ Room silme işlemi gönderilemedi');}
 }
 function delNote(city,id){if(!DB[city])return;DB[city]=DB[city].filter(n=>n.id!==id);if(!DB[city].length)delete DB[city];sv();mirrorDeletedNoteToRoom(city,id);renderNotes();updateStyles();updateSum();toast('Not silindi');}
-function toggleFav(city,id){const n=DB[city]?.find(n=>n.id===id);if(!n)return;n.fav=!n.fav;sv();renderNotes();updateSum();if(document.getElementById('tab-favs').classList.contains('on')) renderFavs();toast(n.fav?'❤️ Favorilere eklendi':'Favorilerden çıkarıldı');}
+function toggleFav(city,id){const n=DB[city]?.find(n=>n.id===id);if(!n)return;n.fav=!n.fav;sv();mirrorNewNoteToRoom(city,n);renderNotes();updateSum();if(document.getElementById('tab-favs').classList.contains('on')) renderFavs();toast(n.fav?'❤️ Favorilere eklendi':'Favorilerden çıkarıldı');}
 
 function renderFavs(){
   const fl=document.getElementById('fl'),fb=document.getElementById('fb');
