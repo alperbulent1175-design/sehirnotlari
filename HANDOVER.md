@@ -24,6 +24,7 @@
   * Yerel Depolama: Android `SharedPreferences` (Şehir rehberleri önbelleği)
   * Bildirim ve Hatırlatıcı: `AlarmManager` + `BroadcastReceiver` (`ReminderReceiver`)
   * Dosya Paylaşımı: AndroidX `FileProvider` (`${applicationId}.fileprovider`)
+  * Güncelleme: Herkese açık GitHub Releases API (kimlik doğrulamasız). Her açılışta sürüm kontrolü, arka planda APK indirme ve FileProvider ile kurulum. Token veya `local.properties` anahtarı yoktur.
 * **Yapay Zeka (AI):**
   * SDK: `com.google.ai.client.generativeai:generativeai:0.9.0` (Google AI Studio SDK)
   * Aktif Model: `gemini-2.5-flash` (Yüksek erişilebilirlik ve hız için 3.5'ten 2.5'e sabitlendi)
@@ -52,6 +53,7 @@ SehirNotlari/
 │   │   │   └── manifest.json            # Web uygulama manifesti
 │   │   ├── java/com/sehirnotlari/
 │   │   │   ├── MainActivity.kt          # Ana Activity, WebView yapılandırması, WebAppInterface (Köprü), AI entegrasyonu
+│   │   │   ├── GithubReleaseUpdater.kt  # Herkese açık GitHub Releases kontrolü, APK indirme ve kurulum
 │   │   │   └── ReminderReceiver.kt      # Alarm ve zamanlanmış bildirim alıcısı
 │   │   └── res/
 │   │       ├── xml/file_paths.xml       # FileProvider izinli dosya yolları
@@ -78,6 +80,11 @@ WebView içerisindeki JavaScript, `window.Android` nesnesi üzerinden native Kot
 | `window.Android.scheduleReminder(city, msg, time)` | `city, message, timestamp` | `AlarmManager` ile exact alarm kurar; zamanı gelince bildirim fırlatılır. |
 | `window.Android.backupToCloud(json)` | `json: String` | Firebase veritabanına JSON yedeği atar. |
 | `window.Android.restoreFromCloud()` | - | Firebase'den veriyi çeker ve `importFromCloud(json)` JS fonksiyonunu çalıştırır. |
+| `window.Android.checkForUpdate()` | - | Açılışta native katman zaten bir kez çağırır. Aynı oturumda herkese açık `releases/latest` kontrolünü başlatır; yeni sürüm varsa APK indirmesini de başlatır. |
+| `window.Android.downloadUpdate()` | - | İndirme sürmüyorsa kontrol + indirmeyi başlatır. APK inmişse kuruluma geçer. |
+| `window.Android.installUpdate()` | - | İndirilen APK için paket yükleyiciyi açar. Android 8+ izni yoksa bilinmeyen uygulamalar ayarını açar. |
+
+Native katman durumu `onGithubUpdate({type, label, percent, message})` ile sayfaya iletir. `type`: `available`, `progress`, `needs_permission`, `ready`, `failed`. Arayüz düğme beklemeden ilerler; `installUpdate` yalnızca izin veya paket yükleyici yeniden açılacaksa kullanılır.
 
 ---
 
@@ -96,15 +103,16 @@ WebView içerisindeki JavaScript, `window.Android` nesnesi üzerinden native Kot
      .\gradlew.bat compileDebugKotlin
      .\gradlew.bat installDebug
      ```
+4. **Uygulama İçi Güncelleme (GitHub Releases, herkese açık):**
+   * Her açılışta, WebView `index.html` yüklenince `GithubReleaseUpdater` şu adresi kimlik doğrulamadan okur: `https://api.github.com/repos/alperbulent1175-design/sehirnotlari/releases/latest`. Token, `BuildConfig` alanı veya `local.properties` anahtarı yoktur; depo herkese açıktır.
+   * `tag_name` ile `versionName` sayısal kıyaslanır (baştaki `v` yok sayılır). Adlar aynıysa etiketteki `+N` veya `(N)` eki `versionCode` ile kıyaslanır. Daha yeni sürümde `.apk` varsa arayüz kilitlenmeden indirilir (`externalCacheDir`, olmazsa dahili önbellek + FileProvider).
+   * İndirme bitince paket yükleyici açılır. Android 8+ için manifestte `REQUEST_INSTALL_PACKAGES` vardır; izin yoksa bilinmeyen uygulama ayarı istenir. `index.html` içinde "Yeni Güncelleme Mevcut (vX.Y)" şeridi ve indirme çubuğu gösterilir.
 
 ---
 
 ## 6. Sırada Bekleyen / Planlanan Görevler (Roadmap)
 
-1. **Uygulama İçi Otomatik Güncelleme (In-App GitHub Updater):**
-   * `AndroidManifest.xml` içerisine `REQUEST_INSTALL_PACKAGES` izni eklenmeli.
-   * `MainActivity.kt` içerisine GitHub Releases API (`https://api.github.com/repos/{owner}/{repo}/releases/latest`) üzerinden yeni sürüm kontrolü ve APK indirme motoru yazılmalı.
-   * `index.html` arayüzüne "Yeni Güncelleme Mevcut (v1.1)" penceresi ve indirme çubuğu eklenmeli.
+1. **Uygulama İçi Otomatik Güncelleme (In-App GitHub Updater):** **Tamamlandı** (ayrıntı bölüm 5.4). Her açılışta herkese açık Releases API; token yok.
 2. **Çoklu Cihaz Senkronizasyonu (Cloud Sync):**
    * Telefon ve tablet arasında notların ortak görünmesi için Google Sign-In veya Supabase/Firebase Firestore entegrasyonu.
 3. **Sesli Notları Saklama (Voice Player):**
@@ -125,5 +133,5 @@ WebView içerisindeki JavaScript, `window.Android` nesnesi üzerinden native Kot
 > 
 > Projenin tüm detayları, mimarisi ve çözülmüş geçmiş hataları projenin kök dizinindeki HANDOVER.md dosyasında belgelenmiştir. 
 > 
-> Sıradaki görevimiz: Uygulamaya GitHub Releases üzerinden çalışan "In-App Auto Updater" (Uygulama İçi Otomatik Güncelleme) sistemini entegre etmek. Lütfen HANDOVER.md dosyasını incele ve kaldığımız yerden devam edelim.
+> Uygulama içi GitHub Releases güncelleyicisi eklendi (herkese açık API, token yok, her açılışta otomatik kontrol ve arka plan indirme). Sıradaki görev için HANDOVER.md bölüm 6'daki kalan maddelere bakın.
 > ```
