@@ -574,3 +574,188 @@ Test APK'sı geçici kopyada `versionCode` 101 / `versionName` "101.0" ile derle
 4. **Yedekler budanmıyor.** Tablo, kullanıcı işlemi sayısıyla sınırlı olarak büyür. Ekran son 50 işlemi gösteriyor.
 5. Cihazda işlem tam transaction sırasında öldürülemedi (işlem milisaniyeler sürüyor); bu durum yalnız birim testiyle kanıtlandı. Emülatörde sonuçların ekrana ulaşması yaklaşık 3 sn sürebiliyor; bu sürede ekranda "Kontrol ediliyor…" görünüyor.
 6. Önceki riskler sürüyor: Room ana kaynak değil, WebView `localStorage` kaybı, fiziksel cihaz ve eski API sürümleri denenmedi, geri dönüş yok (v4 → v3 APK'sı Room'u açamaz).
+
+## P8 — Room ana kaynak geçişi / izole prototip (6 Kasım 2026)
+Dal: `feature/room-migration-validation`, başlangıç `a4eba8e`. `main`'e dokunulmadı; push veya merge yapılmadı. Şema v4'te kaldı: yeni tablo, kolon ya da migration yok. Üretimde (release) Room-first kapalı. Üretimdeki `localStorage` yolu değişmedi.
+
+### Aşama A — Mevcut akış ve dayanıklı yazma protokolü
+**Bugünkü (üretim) akış:**
+- `index.html` önce notu `localStorage`'a yazıyor (`sv()`), "kaydedildi" bildirimini de buna göre gösteriyor.
+- Room'a yazma ayrı bir gölge çağrı: `upsertRoomNote`/`deleteRoomNote`. Önce günlüğe `PENDING` yazılıyor, ardından tek SQL komutu çalışıyor (otomatik commit). Sonuç, komut döndükten sonra sayfaya gönderiliyor.
+- Sayfa o sırada yoksa (döndürme, yeniden yükleme, ölüm) sonuç kayboluyor.
+- WebView `localStorage`'ı diske gecikmeyle yazıyor. P6'da son yazmaların ani kapanmada kaybolduğu görülmüştü.
+
+**Room-first yazmasının başarı noktası:** Not yalnız şu sırayla "kaydedildi" sayılıyor:
+1. `RoomFirstWriter.write()` içindeki `db.withTransaction` bloğu COMMIT ile döner.
+2. Native yanıtı bundan sonra kurar ve sayfaya gönderir.
+3. Sayfa bu yanıtı işler.
+
+Bu noktaya kadar notun yanında "Kaydediliyor…/Siliniyor…" görünüyor. Hata, çakışma veya silinmiş durumunda "kaydedildi" hiç gösterilmiyor.
+
+**Tekrar ve kayıp yanıt koruması (şema değişmeden):** Her istek, sayfanın düzenlediği sürümün biletini (`base`) taşır; yeni notta bu değer 0'dır. Native, sıralayıcı kilidi altında ve tek transaction içinde şöyle karar verir:
+
+| Room'daki satır | İstek | Sonuç |
+| :--- | :--- | :--- |
+| Tombstone | Silme | `ALREADY_DELETED` (kaydedildi sayılır) |
+| Tombstone | Yazma | `DELETED`; diriltilmez, değişiklik kaydedilmez |
+| Yok | Silme | `ALREADY_DELETED` |
+| Yok, `base` ≠ 0 | Yazma | `CONFLICT` |
+| Bilet = `base` | Herhangi biri | `COMMITTED`, yeni bilet verilir, `modifiedAt` = gerçek değişiklik zamanı |
+| Bilet ≠ `base`, içerik isteğinkiyle aynı | Yazma | `ALREADY_SAVED`; hiçbir şey yazılmaz (yanıtı kaybolmuş, zaten uygulanmış istek) |
+| Bilet ≠ `base`, içerik farklı | Herhangi biri | `CONFLICT`; güncel satır sayfaya döner |
+
+- Biletler artarak ilerlediği ve hiç tekrar kullanılmadığı için bir istek en fazla bir kez uygulanır.
+- Aynı istek kimliği veya aynı içerik tekrar gönderilse de sonuç değişmez.
+- Silmede satırın içeriği korunur.
+
+**Uygulama ölürse:**
+- COMMIT'ten önce ölürse hiçbir şey yazılmaz (SQLite geri alır). Sayfa isteği giden kutusunda (`room_first_outbox`) tuttuğu için açılışta aynı istek tekrar gönderilir ve normal biçimde uygulanır.
+- COMMIT'ten sonra, yanıt ulaşmadan ölürse aynı istek tekrar gönderilir ve `ALREADY_SAVED` döner.
+
+**Ölçülen dayanıklılık ayarı:** Cihazda `PRAGMA journal_mode = wal`, `PRAGMA synchronous = NORMAL` (1) okundu. Varsayılmadı; açılışta okunup ekranda ve Logcat'te gösteriliyor.
+- **Bu ayarla garanti edilen:** Commit dönmüş bir transaction'ın verisi WAL dosyasına `write()` ile işlenmiştir. Uygulama çökse, öldürülse veya `force-stop` edilse de korunur.
+- **Garanti edilmeyen:** NORMAL modda WAL her commit'te `fsync` edilmez; yalnız checkpoint'te edilir. Ani güç kesintisinde veya çekirdek çökmesinde son checkpoint'ten sonraki commit'ler geri alınabilir. Veritabanı tutarlı kalır, bozulmaz, ama "kaydedildi" denmiş son yazmalar kaybolabilir.
+- Depolama arızası kapsam dışı. `synchronous = FULL` bir üretim kararı olarak bırakıldı; prototipte değiştirilmedi.
+
+### Aşama B — Yalnız debug derlemesinde Room-first prototipi
+- **Kapı:** `RoomFirstSwitch(available = BuildConfig.DEBUG)`. Release derlemesinde mod bayrağı açık bile olsa `isOn()` false döner. Köprü yazmaları ve geçiş komutları reddedilir; birim ve koruma testleriyle kanıtlandı.
+- **Bayrak:** `room_first_prototype` SharedPreferences dosyası, `commit()` ile senkron yazılıyor. Varsayılan kapalı.
+- **Açma (`ENABLE`):**
+  1. Ön denetim temiz olmalı.
+  2. Doğrulanmış yedek yazılır.
+  3. Ancak bunlardan sonra bayrak açılır.
+  Yedek, bayrak yazılamazsa da kalır ve tekrar denemede yenisi alınır. Yedekler silinmez.
+- **Kapatma (`DISABLE`):**
+  1. Sayfa, Room'un commit edilmiş notlarından `tur_v10`'u yeniden yazar ve 3 sn bekler.
+  2. Yazdığı değeri geri okur.
+  3. Native bu kopyayı Room'la denetler. Temizse bayrak kapanır; değilse mod açık kalır.
+  Bu, modda `localStorage`'a not yazan tek yer.
+- **Mod açıkken:**
+  - Sayfa notları yalnız Room'dan okur ve `tur_v10`'a dokunmaz.
+  - Oluşturma, düzenleme, favori ve silme işlemlerinin her biri, değişen not başına bir istek olarak gider.
+  - Not başına aynı anda tek istek uçuşta olur. Arada yapılan düzenlemeler birleştirilir: son tam sürüm, onaylanan biletin üstüne gönderilir.
+  - Native, `localStorage`'dan türeyen bütün Room yazmalarını "Room-first mode is on" hatasıyla reddeder: içe aktarma, gölge yazma/silme, uzlaştırma, P7 işlemleri ve geri alma.
+- **Açılış:** Room okunur. Giden kutusundaki istekler aynı kimlik ve aynı `base` ile tekrar gönderilir. Room okunamazsa notlar gösterilmez ve yazma kabul edilmez ("Room okunamadı").
+- **Kullanıcı durumları:**
+  - Not kartında "Kaydediliyor…", "Siliniyor…", "Room'a kaydedildi", "Kaydedilemedi; değişiklik uygulanmadı", çakışma ve silinmiş mesajları.
+  - Altta, ekran okuyucuya duyurulan bir durum çubuğu.
+  - Veri ve Yedek sekmesinde debug kartı: SQLite ayarı, denetim sonucu, onay kutusu, geçiş düğmesi ve yedek listesi (SHA-256 doğrulamasıyla).
+
+### Aşama C — Geçiş öncesi denetim
+- **Geçişi engelleyen fark türleri:**
+  - okunamayan yerel not,
+  - Room'da eksik not,
+  - içerik farkı,
+  - Room'un daha yeni olduğu kayıt,
+  - tombstone çakışması,
+  - yalnız Room'da olan kayıt,
+  - kökeni belirsiz kayıt,
+  - eşleşmeyen bekleyen yazma,
+  - kanıtla onarılabilir fark,
+  - çözülmemiş günlük kaydı,
+  - denetim sırasında değişen not.
+- Bu türlerden herhangi biri sıfırdan büyükse geçiş otomatik olarak `REFUSED` olur; hiçbir şey dönüştürülmez.
+- Denetim, P6 uzlaştırıcısını önizleme modunda, sıralayıcı kilidi altında ve tek transaction içinde çalıştırır.
+- **Yedek:** `files/room-first-backups/rf-backup-<zaman>.json` dosyası ve yanında `.sha256`. İçeriği: `localStorage` metni bayt bayt aynen ve tombstone'lar dahil bütün Room satırları. Önce geçici dosyaya yazılır, `fsync` edilir, sonra yeniden adlandırılır. Ekranda ve `STATUS` yanıtında her yedek yeniden doğrulanır.
+- **Geri yükleme planı (elle):**
+  1. Uygulamayı durdurun.
+  2. Yedeği `run-as` ile alın ve SHA-256 değerini yan dosyayla karşılaştırın.
+  3. `localStorage` alanını `tur_v10` olarak, `room` satırlarını Room'a geri yazın.
+  Okuma ve doğrulama birim testlerinde ve cihazda (bilgisayar tarafında) denendi. Tek düğmeli geri yükleme yok; cihazda geri yükleme yapılmadı.
+
+### Otomatik testler (P8)
+171 test, 0 başarısız (P7'de 138; **33 yeni**):
+- `RoomFirstWriterTest` (10, Robolectric, gerçek SQLite dosyası, her adımda yeniden açılan süreç):
+  - onaylanan oluşturma/düzenleme/favori/silmenin yeniden açılışta okunması;
+  - COMMIT'ten önce çökmede hiçbir şey yazılmaması ve aynı isteğin tekrar uygulanabilmesi;
+  - yanıtı kaybolmuş isteğin iki kez uygulanmaması;
+  - eski sürümden gelen isteğin çakışma vermesi;
+  - yeni ve eski tombstone'ların diriltilmemesi;
+  - 400 hızlı düzenlemede bilet sırasının ve son sürümün korunması;
+  - aynı sürümden gelen 20 eşzamanlı istekten yalnız birinin uygulanması;
+  - mod kapalıyken reddetme;
+  - bozuk isteğin içeriği tekrarlamaması;
+  - dayanıklılık ayarlarının raporlanması.
+- `RoomFirstSwitchTest` (10):
+  - release derlemesinde modun hiç açılmaması;
+  - her fark türünde reddetme (bayrak ve yedek yazılmaz);
+  - okunamayan kopya;
+  - tombstone, bekleyen yazma, kökeni belirsiz kayıt ve Room'un daha yeni olduğu durumda reddetme;
+  - doğrulanmış yedeğin bayraktan önce yazılması;
+  - değiştirilmiş veya kesik yedeğin tespiti;
+  - bayrak yazılırken kesilen geçişin eski modda kalması ve tekrar denenebilmesi (eski yedek de korunur);
+  - eski kopyayla dönüşün reddedilmesi, Room'dan yazılmış kopyayla dönüşün kabulü;
+  - logların yalnız sayı içermesi.
+- `RoomFirstScriptTest` (9, Rhino ile gerçek `room-first.js`):
+  - Room okunmadan kabul yok;
+  - "kaydedildi" yalnız commit yanıtından sonra;
+  - 400 düzenlemenin birleştirilmesi;
+  - yeniden yüklemede aynı kimlik ve `base` ile tekrar gönderim;
+  - hata, çakışma, silinmiş ve köprü hatasının "kaydedildi" göstermemesi;
+  - onaylanmamış oluşturmanın arkasında bekleyen silme;
+  - bilinmeyen yanıt;
+  - Türkçe engel etiketleri;
+  - dosyada konsol veya `localStorage` kullanımı olmaması.
+- `RoomMigrationGuardTest` (+3; ayrıca yükleme dinleyicisi beklentisi güncellendi):
+  - modun yalnız `BuildConfig.DEBUG` ile açılması;
+  - altı reddetme noktası;
+  - üretimde `sv()`/`DB` dizgelerinin aynen korunması;
+  - `localStorage.setItem(NKEY` yalnız `sv()` ve denetimli dönüşte;
+  - gölge yazmalarda erken dönüş;
+  - konsolda yalnız kod ve sayı.
+- `RoomBridgeScriptsTest` (+1): Room-first geri çağırma beyaz listesi.
+
+### Emülatör sonuçları (`emulator-5554`, API 37)
+Test APK'sı geçici kopyada `versionCode` 102 / `versionName` "102.0" ile derlendi; depodaki sürüm numarası değişmedi. P8 öncesi `tur_v10` (13 Ankara notu) ve veritabanının anlık görüntüsü alındı.
+
+| Senaryo | Sonuç (cihazda doğrulandı) |
+| :--- | :--- |
+| v102 kurulumu, üretim modu | `RF_MODE=false`, `tur_v10` bayt bayt aynı, durum çubuğu gizli |
+| Farklar varken geçiş | Ön denetim: içerik farkı 1, tombstone çakışması 1. Düğme kapalı. Köprüden zorla `ENABLE`: `REFUSED`; yedek ve bayrak yazılmadı |
+| Farkların giderilmesi | İki P5 test notu normal uygulama işlemleriyle düzeltildi: "P5 burst 3" düzenlenip kaydedildi; Room'da zaten tombstone olan "P5 burst 4" telefonda silindi. Denetim temiz (12 = 12) |
+| Arayüzden geçiş | `ENABLED`. Bayrak `commit()` ile yazıldı. Yedek bilgisayarda bağımsız doğrulandı: SHA-256 yan dosyayla aynı, gömülü `localStorage` anlık görüntüyle bayt bayt aynı, 18 Room satırı (6 tombstone) |
+| Oluşturma, düzenleme, favori | Her birinde önce "Kaydediliyor…", commit yanıtından sonra "Room'a kaydedildi" |
+| `force-stop` + yeniden açılış | Onaylanan not (başlık, içerik, favori) aynen geri okundu. Giden kutusu boş. Mod açıkken `tur_v10` bayt bayt aynı kaldı |
+| 400 hızlı düzenleme | 618 ms. Birleştirilerek 4 Room transaction'ı oldu, hepsi `COMMITTED`. Son sürüm ("rapid 399") yeniden açılışta okundu |
+| Yazma yağmuru sırasında `force-stop` | Sayfanın onayladığı son sürüm "kill 78"di; native "kill 113"e kadar commit etmişti. Dosyada "kill 113" ve son loglanan bilet vardı (`integrity ok`, bekleyen günlük 0). Açılışta uçuştaki istek aynı kimlikle tekrar gönderildi ve `ALREADY_SAVED` döndü (kayıp yanıt, çift uygulama yok) |
+| Yazma sırasında döndürme (Activity yeniden oluşturuldu) | Son istek commit edilmişti, yanıtı eski sayfayla kayboldu. Yeni sayfa tekrar gönderdi: `ALREADY_SAVED`, aynı bilet, not "Room'a kaydedildi" |
+| Aynı istek kimliği iki kez (köprüden) | `COMMITTED`, ardından `ALREADY_SAVED`; aynı bilet |
+| Eski sürümden yazma | `CONFLICT`; hiçbir şey yazılmadı |
+| Eski P5 tombstone'una yeni yazma (`base` 0 ve tombstone bileti) | İkisi de `DELETED`; diriltilmedi |
+| Room-first'te silme, ardından eski biletle yazma ve tekrar silme | `COMMITTED`, ardından `DELETED` ve `ALREADY_DELETED`. Satır, içeriği korunarak tombstone oldu. Yeniden açılışta silinmiş kaldı |
+| P7 Veri Güvenliği ekranı | "Room ana kaynak deneme modu açık" bildirimi; karşılaştırma ve onarım düğmeleri gizli. Köprüden uzlaştırma çağrısı `reconcile refused … reason=room-first` |
+| Dönüş, kopya yazıldıktan sonra kesilerek | Kopya yazıldı, `DISABLE` gönderilmeden `force-stop`. Bayrak açık kaldı, Room değişmedi, açılışta mod yine açıktı |
+| Dönüşün tekrarı | `DISABLED` (denetim temiz: 12 = 12). Üretim modunda `tur_v10` Room'un 12 etkin notuyla aynı; ön denetim temiz (7 tombstone); yedek ve yedek kimliği korundu |
+| Gerçek v1 dosyasından v4'e (cihazda) | Şema v1 dışa aktarımından üretilen dosya cihaza kondu. Room v1 → v2 → v3 → v4 zinciriyle açtı: `user_version` 4, v4 kimlik özeti, `integrity ok`, 3 satır, favori ve tombstone korundu, `isAI`/`modifiedAt` boş (kökeni belirsiz). Açılış uzlaştırması hiçbir şey onarmadı. Bu veriyle `ENABLE`: `REFUSED` (kökeni belirsiz 2, yalnız Room 2, eksik 12). Ardından asıl veritabanı geri kondu; denetim temiz, `tur_v10` aynı |
+| Logcat | 10 log dosyasında 110 satır (42 native Room, 34 sayfa konsolu): test başlıkları, içerikleri, anahtar ve yığın izi için 0 eşleşme |
+| Ekran ayarları | Döndürme (`user_rotation` 0, otomatik döndürme kapalı), `wm size` ve `wm density` başlangıç değerlerinde |
+
+**Yalnız birim testiyle doğrulananlar:**
+- COMMIT'ten hemen önce ölüm (cihazda milisaniyelik pencere zamanlanamıyor).
+- Bayrak yazılırken kesilen açma işlemi.
+- Değiştirilmiş veya kesik yedek.
+- Release derlemesinin kapalı olması (ayrıca koruma testi var; release APK cihazda denenmedi).
+- Eşzamanlı aynı sürüm istekleri.
+- Okunamayan `localStorage`.
+
+**Test edilemeyenler:** Gerçek güç kesintisi, çekirdek çökmesi ve depolama arızası. Fiziksel cihaz ve eski API sürümleri de denenmedi.
+
+### Veri kaybı gözlemleri
+1. **"Kaydedildi" onayı almış hiçbir değişiklik kaybolmadı:** `force-stop`, yazma sırasında öldürme, döndürme ve yeniden açılışlarda hep aynı sonuç alındı.
+2. **Onay almamış değişiklikler kaybolabiliyor.** Öldürme veya döndürme anında sayfa belleğinde bekleyen, henüz gönderilmemiş birleştirilmiş düzenlemeler kayboldu: öldürme testinde "kill 113"ten, döndürmede "rotate 127"den sonraki düzenlemeler. Bunlar hiçbir zaman "kaydedildi" olarak gösterilmedi; çubukta "kaydediliyor" yazıyordu.
+3. **Giden kutusu da WebView `localStorage`'ında duruyor.** Diske yazılmadan ölünürse uçuştaki istek tekrar gönderilmez. Bu istek ya commit edilmiştir (Room'da vardır) ya da edilmemiştir (kullanıcıya "kaydedildi" denmemiştir). Onaylanmış veri kaybı oluşmaz.
+4. **Dönüşte risk:** `DISABLE` sayfanın gönderdiği kopyayı denetler. Bayrak kapandıktan sonra, WebView kopyayı diske yazmadan ölürse üretim modu eski `tur_v10` ile açılır. Room ve yedek veriyi korur. P6/P7 farkı "Room daha yeni / içerik farkı" olarak raporlar; Room ezilmez. Bu sıra cihazda üretilemedi: 3 sn beklemeden sonra kopya her denemede diskteydi.
+5. Emülatörde açılıştan sonraki ilk saniyelerde yanıtlar sayfaya 3–5 sn gecikmeyle ulaşıyor (native milisaniyeler içinde commit ediyor). Bu sürede durum doğru biçimde "Kaydediliyor…/Siliniyor…" gösteriyor.
+
+### Derleme ve test
+| Komut | Sonuç |
+| :--- | :--- |
+| `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest --rerun-tasks` | **BUILD SUCCESSFUL**. 171 test, 0 başarısız, 0 atlanan (P7'de 138) |
+
+### Kalan riskler
+1. `synchronous = NORMAL` ile güç kesintisinde son commit'ler geri alınabilir. Üretime geçmeden önce `FULL` (yazma maliyeti karşılığında) veya kullanıcıya açık bir uyarı kararı gerekiyor.
+2. Onay bekleyen düzenlemeler ve giden kutusu WebView belleğinde ve `localStorage`'ında duruyor. Native tarafta kalıcı bir istek kuyruğu yok; bilinçli olarak şema yükseltmesi yapılmadı.
+3. Dönüş akışında WebView'ın `localStorage`'ı diske yazma zamanı garanti değil (gözlem 4). Veri Room'da ve yedekte kalıyor, ama farkların elle giderilmesi gerekebilir.
+4. Geri yükleme elle yapılıyor ve cihazda denenmedi. Yedekler silinmediği için dosya sayısı artar.
+5. Başka bir cihaz veya ikinci bir sekme yok; çakışma çözümü yalnız "reddet ve güncel hâli göster".
+6. Önceki riskler sürüyor: fiziksel cihaz ve eski API'ler denenmedi; v4'ten v3'e geri dönüş yok.

@@ -190,6 +190,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
 .ds-hist li strong{color:var(--txt)}
 .ds-sub{font-size:12px;font-weight:700;color:var(--txt);margin:12px 0 6px}
 .ds-dlg h3{overflow-wrap:anywhere}
+.rf-bar{position:fixed;left:8px;right:8px;bottom:calc(8px + var(--sb,0px));z-index:2600;max-width:420px;margin:0 auto;background:#1f3b57;color:#fff;font-size:12px;font-weight:600;line-height:1.4;padding:8px 12px;border-radius:var(--rsm);box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none}
+.rf-bar.err{background:#922b21}
+body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
+#roomFirstDev .ds-btn:disabled{opacity:.45;cursor:not-allowed}
+.rf-badge{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;background:var(--surf2);color:var(--txt);border:1px solid var(--brd);vertical-align:middle}
+.rf-badge.rf-saving,.rf-badge.rf-deleting{background:#fdebd0;color:#7e3a00;border-color:#f0b27a}
+.rf-badge.rf-error,.rf-badge.rf-conflict,.rf-badge.rf-deleted{background:#fadbd8;color:#78281f;border-color:#f1948a}
 .ds-dlg .sub-row{position:sticky;bottom:-16px;background:var(--surf);margin:0 -16px -16px;padding:10px 16px 16px;border-top:1px solid var(--brd)}
 .ds-dlg h3:focus{outline:2px solid var(--acc);outline-offset:2px}
 .ds-dlg p{font-size:13px;color:var(--txt2);line-height:1.55;margin-bottom:8px;overflow-wrap:anywhere}
@@ -446,6 +453,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
         <h3 class="ds-sub" id="dsHistTitle" hidden>Son işlemler</h3>
         <ul class="ds-hist" id="dsHistory" aria-labelledby="dsHistTitle"></ul>
       </section>
+      <section class="bk-card ds-card" id="roomFirstDev" data-state="checking" aria-labelledby="rfTitle" hidden>
+        <h2 class="bk-title" id="rfTitle" tabindex="-1">🧪 Room ana kaynak prototipi (yalnız debug)</h2>
+        <p class="bk-desc">Yalnız geliştirme derlemesinde görünür. Açıkken notlar Room’dan okunur ve Room’a yazılır; bir not ancak Room işlemi tamamlandıktan sonra “kaydedildi” sayılır. Telefondaki kopya (localStorage) bu sürede değiştirilmez.</p>
+        <p class="ds-head" id="rfHead" role="status" aria-live="polite"></p>
+        <p class="ds-meta" id="rfMeta"></p>
+        <ul class="ds-list" id="rfBlockers" aria-label="Geçişi engelleyen farklar"></ul>
+        <div class="ds-actions">
+          <button type="button" class="bk-btn secondary ds-btn" id="rfCheck">Geçiş denetimini çalıştır (değişiklik yapmaz)</button>
+          <label class="ds-check"><input type="checkbox" id="rfConfirm"> <span id="rfConfirmText"></span></label>
+          <button type="button" class="bk-btn primary ds-btn" id="rfSwitch" disabled>Geç</button>
+        </div>
+        <h3 class="ds-sub" id="rfBackupTitle" hidden>Geçiş yedekleri</h3>
+        <ul class="ds-hist" id="rfBackups" aria-labelledby="rfBackupTitle"></ul>
+      </section>
       <div class="bk-card"><div class="bk-title">☁️ Bulut Yedekleme</div><div class="bk-desc">Verilerinizi Firebase üzerine yedekleyin veya geri yükleyin.</div>
         <div style="display:flex;gap:5px">
             <button class="bk-btn primary" style="flex:1" onclick="cloudBackup()">Buluta Yedekle</button>
@@ -592,13 +613,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
   <div class="upd-track"><div class="upd-fill" id="updFill"></div></div>
 </div>
 <div class="toast" id="toast"></div>
+<div class="rf-bar" id="rfBar" role="status" aria-live="polite" hidden></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="note-ids.js"></script>
 <script src="data-safety.js"></script>
+<script src="room-first.js"></script>
 <script>
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-let _tt;const toast=m=>{const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2500);};
+let _tt,rfToast=null;const toast=m=>{if(rfToast){m=rfToast;rfToast=null;}const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2500);};
 const showLoading=m=>{document.getElementById('loadingTxt').textContent=m||'İşleniyor...';document.getElementById('loadingOv').style.display='flex';};
 const hideLoading=()=>document.getElementById('loadingOv').style.display='none';
 const CEMOJI={Gezi:'📍',Lezzet:'🍔',Kültür:'🏛️',Genel:'📝'};
@@ -613,8 +636,12 @@ const CITY_INFO={'İstanbul':{pop:'15.907.951',area:'5.461 km²',plaka:'34'},'Te
 const WMO={0:'☀️ Açık',1:'🌤️ Az Bulutlu',2:'⛅ Parçalı',3:'☁️ Bulutlu',45:'🌫️ Sis',48:'🌫️ Sis',51:'🌦️ Çisenti',53:'🌦️ Çisenti',55:'🌧️ Çisenti',61:'🌧️ Yağmur',63:'🌧️ Yağmur',65:'🌧️ Yağmur',71:'🌨️ Kar',73:'❄️ Kar',75:'❄️ Kar',80:'🌦️ Sağanak',81:'🌧️ Sağanak',82:'⛈️ Sağanak',95:'⛈️ Fırtına',96:'⛈️ Fırtına',99:'⛈️ Fırtına'};
 
 const NKEY='tur_v10';
-let DB=(()=>{try{return JSON.parse(localStorage.getItem(NKEY))||{};}catch{return{};}})();
-const sv=()=>localStorage.setItem(NKEY,JSON.stringify(DB));
+// Debug-only Room-first prototype. Native reports it off in release builds, and then every
+// line below behaves exactly as before: notes come from and go to localStorage.
+const RF_INFO=(()=>{try{return window.Android&&typeof window.Android.roomFirstMode==='function'?JSON.parse(window.Android.roomFirstMode()):null;}catch(e){return null;}})();
+const RF_MODE=!!(RF_INFO&&RF_INFO.available===true&&RF_INFO.on===true);
+let DB=RF_MODE?{}:(()=>{try{return JSON.parse(localStorage.getItem(NKEY))||{};}catch{return{};}})();
+const sv=()=>{if(RF_MODE){rfCommitFromDB();return;}localStorage.setItem(NKEY,JSON.stringify(DB));};
 let curCity=null,curBolge=null,mapReady=false,q='',selCat='Gezi',selStar=0,selColor='',sortMode='count',dimR='',editingCity=null,editingId=null;
 
 // ── MAP ───────────────────────────────────────────────────────────────────────
@@ -1095,7 +1122,7 @@ function requestRoomReconcile(apply){
   try{window.Android.reconcileRoomNotes(JSON.stringify(DB),requestId,apply!==false);}
   catch(e){roomReconcileFailed(e.message||'Room bridge unavailable');}
 }
-window.addEventListener('load',()=>requestRoomReconcile(true));
+window.addEventListener('load',()=>{if(RF_MODE)rfStart();else requestRoomReconcile(true);});
 
 // ── VERİ GÜVENLİĞİ ──────────────────────────────────────────────────────────
 // Rebuilt from native state on every page load (also after rotation): the startup report,
@@ -1134,6 +1161,15 @@ function dsRecheck(){dsPhase='checking';dsRender();requestRoomReconcile(false);}
 const dsTime=t=>new Date(t).toLocaleString('tr-TR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
 
 function dsRender(){
+  if(RF_MODE){
+    // The phone copy is frozen while Room is the source: comparing or repairing from it would be wrong.
+    document.getElementById('dataSafety').dataset.state='uncertain';
+    document.getElementById('dsHead').textContent='Room ana kaynak deneme modu açık: notlar Room’dan okunuyor.';
+    document.getElementById('dsMeta').textContent='Telefondaki kopyayla karşılaştırma, onarım ve geri alma bu modda kapalı. Mod kapatılırken telefondaki kopya Room’dan yeniden yazılır ve denetlenir.';
+    ['dsCounts','dsItems','dsHistory'].forEach(id=>{document.getElementById(id).innerHTML='';});
+    ['dsApplyProven','dsCheck','dsBatch','dsHistTitle','dsBadge'].forEach(id=>{document.getElementById(id).hidden=true;});
+    return;
+  }
   const m=DataSafety.model(window.roomReconcileReport,dsStatus,DB,dsPhase);
   document.getElementById('dataSafety').dataset.state=m.state;
   document.getElementById('dsHead').textContent=m.headline;
@@ -1328,12 +1364,157 @@ window.onRoomWriteResult=function(requestId,ok,error){
   else console.info('[RoomBridge] write ok '+requestId);
 };
 function mirrorNewNoteToRoom(city,note){
+  if(RF_MODE)return;
   if(!(window.Android&&typeof window.Android.upsertRoomNote==='function'))return;
   const requestId='note-'+Date.now()+'-'+Math.random().toString(36).slice(2);
   roomPilotPending.set(requestId,true);
   try{window.Android.upsertRoomNote(city,JSON.stringify(note),requestId);}
   catch(e){roomPilotPending.delete(requestId);console.error('Room bridge unavailable',e);toast('⚠️ Room bağlantısı kullanılamadı');}
 }
+
+// ── ROOM-FIRST PROTOTİPİ (yalnız debug) ─────────────────────────────────────
+// Off in release builds (native gate). In Room-first mode the page shows Room's committed rows;
+// sv() turns the page's in-place edits into one Room request per changed note, and a note is
+// shown as saved only after native reports the committed transaction. Console: codes and counts only.
+let rfStore=null,rfFailed=false,rfDurability='',rfPreflight=null,rfBusy=false,rfStatusInfo=null;
+window.onRoomFirstSnapshot=dsSettle;
+window.onRoomFirstSwitch=dsSettle;
+const rfSig=n=>JSON.stringify([n.title||'',n.content||'',n.category||'Genel',n.star||0,n.color||'',!!n.fav,n.date||'',n.isAI===undefined||n.isAI===null?null:!!n.isAI]);
+function rfBadge(city,id){const s=rfStore&&rfStore.statusOf(city,id);return s?`<span class="rf-badge rf-${s.status}">${esc(s.text)}</span>`:'';}
+// Replaces the "saved" toast the calling handler shows right after sv().
+function rfHoldToast(text){rfToast=text;setTimeout(()=>{rfToast=null;},0);}
+function rfShowAll(){
+  DB=rfStore&&rfStore.isReady()?rfStore.view():{};
+  updateStyles();updateSum();if(curCity)renderNotes();
+  if(document.getElementById('tab-favs').classList.contains('on'))renderFavs();
+  rfRefresh();
+}
+function rfCommitFromDB(){
+  if(!rfStore||!rfStore.isReady()){
+    DB={};
+    rfHoldToast(rfFailed?'⚠️ Room okunamadı; değişiklik kaydedilmedi':'Notlar Room’dan yükleniyor; değişiklik kaydedilmedi');
+    return;
+  }
+  const before=rfStore.view(),seen=new Set();let saving=0,deleting=0;
+  Object.keys(DB).forEach(city=>(Array.isArray(DB[city])?DB[city]:[]).forEach(n=>{
+    seen.add(RoomFirst.keyOf(city,n.id));
+    const old=(before[city]||[]).find(o=>NoteIds.sameId(o.id,n.id));
+    if((!old||rfSig(old)!==rfSig(n))&&rfStore.save(city,n))saving++;
+  }));
+  Object.keys(before).forEach(city=>before[city].forEach(n=>{
+    if(!seen.has(RoomFirst.keyOf(city,n.id))&&rfStore.remove(city,n.id))deleting++;
+  }));
+  DB=rfStore.view();
+  if(saving||deleting)rfHoldToast(deleting&&!saving?RoomFirst.STATUS_TEXT.deleting:RoomFirst.STATUS_TEXT.saving);
+  rfRefresh();
+}
+window.onRoomFirstResult=function(requestId,result,error){
+  if(!rfStore)return;
+  const out=rfStore.onResult(requestId,result,error);
+  if(out.unknown){console.info('[RoomFirst] result for unknown request');return;}
+  console.info('[RoomFirst] '+out.op+' '+(result?result.status:'ERROR')+(out.followUp?' next':''));
+  rfShowAll();
+  if((out.status!=='saved'&&out.status!=='removed')||!rfStore.pendingCount())toast(out.notice);
+};
+async function rfStart(){
+  rfStore=RoomFirst.createStore({
+    send:(payload,id)=>window.Android.writeRoomFirst(payload,id),
+    storage:{get:k=>localStorage.getItem(k),set:(k,v)=>localStorage.setItem(k,v)},
+    newId:()=>'rf-'+Date.now()+'-'+Math.random().toString(36).slice(2),
+    sortValue:NoteIds.sortValue
+  });
+  rfRefresh();
+  try{
+    const snap=await dsCall('readRoomFirst',[]);
+    rfStore.hydrate(snap);
+    rfDurability=`${snap.journalMode} / synchronous=${snap.synchronous}`;
+    const resent=rfStore.resume();
+    console.info('[RoomFirst] read active='+snap.active+' tombstones='+snap.tombstones+' resent='+resent);
+    rfShowAll();
+  }catch(e){
+    rfFailed=true;console.info('[RoomFirst] read failed: '+e.message);
+    rfRefresh();toast('⚠️ Room okunamadı; notlar gösterilemiyor.');
+  }
+}
+function rfRefresh(){
+  if(RF_MODE){
+    const bar=document.getElementById('rfBar'),n=rfStore?rfStore.pendingCount():0;
+    bar.hidden=false;bar.classList.toggle('err',rfFailed);document.body.classList.add('rf-on');
+    bar.textContent=rfFailed?'Room ana kaynak: Room okunamadı, notlar gösterilmiyor':
+      !rfStore||!rfStore.isReady()?'Room ana kaynak: notlar yükleniyor…':
+      n?`Room ana kaynak: ${n} not kaydediliyor…`:'Room ana kaynak: değişiklikler Room’a kaydedildi';
+  }
+  rfRenderCard();
+}
+function rfRenderCard(){
+  const card=document.getElementById('roomFirstDev');
+  if(!(RF_INFO&&RF_INFO.available===true)){card.hidden=true;return;}
+  card.hidden=false;
+  const pending=rfStore?rfStore.pendingCount():0,confirm=document.getElementById('rfConfirm');
+  card.dataset.state=RF_MODE?'uncertain':rfPreflight?(rfPreflight.clean?'consistent':'review'):'checking';
+  document.getElementById('rfHead').textContent=RF_MODE?'Açık: notlar Room’dan okunuyor ve Room’a yazılıyor.':'Kapalı: notlar telefondaki kopyadan (localStorage) okunuyor.';
+  document.getElementById('rfMeta').textContent=(rfDurability?'SQLite: '+rfDurability+'. ':'')+
+    (RF_MODE&&pending?pending+' not henüz kaydedilmedi; dönmeden önce bitmesini bekleyin.':'');
+  const blockers=RoomFirst.blockerList(rfPreflight);
+  document.getElementById('rfBlockers').innerHTML=RF_MODE||!rfPreflight?'':
+    rfPreflight.clean?'<li class="ds-item"><p>Denetim temiz: telefondaki kopya ile Room aynı, bekleyen yazma yok.</p></li>':
+    blockers.map(b=>`<li class="ds-item"><p><strong>${b.count}</strong> · ${esc(b.label)}</p></li>`).join('')+
+    '<li class="ds-item"><p>Geçiş reddedilir. Farkları önce Veri Güvenliği bölümünde veya notların kendisinde giderin.</p></li>';
+  document.getElementById('rfCheck').hidden=RF_MODE;
+  document.getElementById('rfConfirmText').textContent=RF_MODE?
+    'Telefondaki kopyanın Room’daki kayıtlarla yeniden yazılacağını, denetleneceğini ve uygulamanın yeniden yükleneceğini anladım.':
+    'Geçişten önce doğrulanmış yedek alınacağını, notların bundan sonra Room’dan okunup yazılacağını ve uygulamanın yeniden yükleneceğini anladım.';
+  const btn=document.getElementById('rfSwitch');
+  btn.textContent=RF_MODE?'Telefondaki kopyaya dön':'Room ana kaynağa geç';
+  btn.disabled=rfBusy||!confirm.checked||(RF_MODE?(pending>0||!rfStore||!rfStore.isReady()):!(rfPreflight&&rfPreflight.clean));
+  const backups=(rfStatusInfo&&rfStatusInfo.backups)||[];
+  document.getElementById('rfBackupTitle').hidden=!backups.length;
+  document.getElementById('rfBackups').innerHTML=backups.map(b=>`<li><strong>${esc(b.id)}</strong><br>`+
+    (b.ok?`Doğrulandı · ${b.legacyNotes} yerel not · ${b.roomRows} Room kaydı · SHA-256 ${esc(String(b.sha256).slice(0,12))}…`:'Bozuk veya eksik: doğrulanamadı')+'</li>').join('');
+}
+async function rfLoadStatus(){
+  try{rfStatusInfo=await dsCall('roomFirstSwitch',['STATUS','{}']);}
+  catch(e){console.info('[RoomFirst] status failed: '+e.message);}
+  rfRenderCard();
+}
+async function rfRunPreflight(){
+  if(rfBusy||RF_MODE)return;rfBusy=true;rfRenderCard();
+  try{const out=await dsCall('roomFirstSwitch',['PREFLIGHT',JSON.stringify(DB)]);rfPreflight=out.preflight;console.info('[RoomFirst] preflight '+out.code);}
+  catch(e){console.info('[RoomFirst] preflight failed: '+e.message);toast('Denetim tamamlanamadı; hiçbir şey değişmedi.');}
+  finally{rfBusy=false;rfRenderCard();}
+}
+async function rfSwitchClick(){
+  if(rfBusy)return;rfBusy=true;rfRenderCard();
+  try{
+    if(!RF_MODE){
+      const out=await dsCall('roomFirstSwitch',['ENABLE',JSON.stringify(DB)]);
+      console.info('[RoomFirst] switch '+out.code);
+      if(out.preflight)rfPreflight=out.preflight;
+      if(out.code==='ENABLED'||out.code==='ALREADY_ON'){toast('Yedek doğrulandı; Room ana kaynağa geçildi. Yeniden yükleniyor…');setTimeout(()=>location.reload(),800);return;}
+      toast(out.code==='REFUSED'?'Geçiş reddedildi: önce farkları giderin.':'Geçiş yapılamadı; mod değişmedi.');
+    }else{
+      if(rfStore.pendingCount()){toast('Bekleyen kayıtlar var; bitmesini bekleyin.');return;}
+      // The only localStorage note write in Room-first mode: the copy is rebuilt from Room's
+      // committed rows, then native audits it against Room before the mode is switched off.
+      const text=JSON.stringify(rfStore.committed());
+      localStorage.setItem(NKEY,text);
+      document.getElementById('rfHead').textContent='Telefondaki kopya Room’dan yazıldı; denetim bekleniyor…';
+      await new Promise(r=>setTimeout(r,3000));
+      if(localStorage.getItem(NKEY)!==text){toast('Telefondaki kopya yazılamadı; mod açık kaldı.');return;}
+      const out=await dsCall('roomFirstSwitch',['DISABLE',text]);
+      console.info('[RoomFirst] switch '+out.code);
+      if(out.preflight)rfPreflight=out.preflight;
+      if(out.code==='DISABLED'||out.code==='ALREADY_OFF'){toast('Telefondaki kopyaya dönüldü. Yeniden yükleniyor…');setTimeout(()=>location.reload(),800);return;}
+      toast('Dönüş reddedildi; mod açık kaldı.');
+    }
+  }catch(e){console.info('[RoomFirst] switch failed: '+e.message);toast('İşlem tamamlanamadı; mod değişmedi.');}
+  finally{rfBusy=false;rfRenderCard();}
+}
+document.getElementById('rfCheck').onclick=rfRunPreflight;
+document.getElementById('rfConfirm').onchange=rfRenderCard;
+document.getElementById('rfSwitch').onclick=rfSwitchClick;
+rfRefresh();
+if(RF_INFO&&RF_INFO.available===true)rfLoadStatus();
 
 // CRUD
 document.getElementById('ba').onclick=()=>{
@@ -1359,6 +1540,7 @@ window.onRoomDeleteResult=function(requestId,ok,error){
   else console.info('[RoomBridge] delete ok '+requestId);
 };
 function mirrorDeletedNoteToRoom(city,id){
+  if(RF_MODE)return;
   if(!(window.Android&&typeof window.Android.deleteRoomNote==='function'))return;
   const requestId='delete-'+Date.now()+'-'+Math.random().toString(36).slice(2);
   roomDeletePending.add(requestId);
@@ -1411,7 +1593,7 @@ function renderNotes(){
   const ns=(curCity&&DB[curCity])||[];nb.textContent=ns.length;
   if(!ns.length){nl.innerHTML='<div class="nemp">Henüz not yok.<br>Yukarıdan ilk notunu ekle ↑</div>';return;}
   nl.innerHTML=[...ns].reverse().map(n=>`<div class="ni" style="border-left-color:${n.color||BOLGE_INFO[curBolge||'ic'].c};background:${n.color?n.color+'22':''}">
-    <div class="nih"><div class="nit">${n.isAI ? '<span title="AI Özeti" style="margin-right:4px">✨</span>' : ''}${CEMOJI[n.category]||'📝'} ${esc(n.title)}${n.fav?' ⭐':''}</div><div class="nid">${n.date}</div></div>
+    <div class="nih"><div class="nit">${n.isAI ? '<span title="AI Özeti" style="margin-right:4px">✨</span>' : ''}${CEMOJI[n.category]||'📝'} ${esc(n.title)}${n.fav?' ⭐':''}${RF_MODE?rfBadge(curCity,n.id):''}</div><div class="nid">${n.date}</div></div>
     ${n.content?`<div class="nic">${esc(n.content)}</div>`:''}
     ${n.star?`<div class="nstars" style="color:#f59e0b">${'★'.repeat(n.star)}${'☆'.repeat(5-n.star)}</div>`:''}
     <div class="nacts">

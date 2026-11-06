@@ -35,7 +35,22 @@ object RoomBridgeScripts {
 
     fun dataSafetyResult(callback: String, requestId: String, result: JSONObject?, error: String?): String {
         require(callback in dataSafetyCallbacks)
+        return callback(callback, requestId, result, error)
+    }
+
+    /** Room-first prototype callbacks (debug builds only); only these names can be called. */
+    const val ROOM_FIRST_SNAPSHOT = "onRoomFirstSnapshot"
+    const val ROOM_FIRST_RESULT = "onRoomFirstResult"
+    const val ROOM_FIRST_SWITCH = "onRoomFirstSwitch"
+    private val roomFirstCallbacks = setOf(ROOM_FIRST_SNAPSHOT, ROOM_FIRST_RESULT, ROOM_FIRST_SWITCH)
+
+    fun roomFirstResult(callback: String, requestId: String, result: JSONObject?, error: String?): String {
+        require(callback in roomFirstCallbacks)
+        return callback(callback, requestId, result, error)
+    }
+
+    private fun callback(name: String, requestId: String, result: JSONObject?, error: String?): String {
         val err = if (error == null) "null" else JSONObject.quote(error)
-        return "window.$callback && window.$callback(${JSONObject.quote(requestId)},${result ?: "null"},$err);"
+        return "window.$name && window.$name(${JSONObject.quote(requestId)},${result ?: "null"},$err);"
     }
 }

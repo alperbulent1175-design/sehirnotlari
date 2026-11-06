@@ -9,7 +9,13 @@ import com.sehirnotlari.data.RoomNoteDraft
 import com.sehirnotlari.data.RoomNoteImportStore
 import com.sehirnotlari.data.RoomNoteKeys
 import com.sehirnotlari.data.RoomNoteWriteSequencer
+import com.sehirnotlari.data.PrefsRoomFirstFlagStore
 import com.sehirnotlari.data.ResolutionAction
+import com.sehirnotlari.data.RoomBridgeFailure
+import com.sehirnotlari.data.RoomFirstBackups
+import com.sehirnotlari.data.RoomFirstSwitch
+import com.sehirnotlari.data.RoomFirstWrite
+import com.sehirnotlari.data.RoomFirstWriter
 import com.sehirnotlari.data.applyResolution
 import com.sehirnotlari.data.dataSafetyStatus
 import com.sehirnotlari.data.inspectNote
@@ -66,6 +72,8 @@ import java.io.File
 import java.util.TimeZone
 
 private const val ROOM_LOG = "SehirNotlariRoom"
+private const val ROOM_FIRST_ON = "Room-first mode is on"
+private const val ROOM_FIRST_OFF = "Room-first mode is off"
 
 class MainActivity : AppCompatActivity() {
 
@@ -73,6 +81,17 @@ class MainActivity : AppCompatActivity() {
     private val notesDatabase by lazy { CityNotesDatabase.get(applicationContext) }
     private val noteWriteSequencer by lazy { RoomNoteWriteSequencer.shared(notesDatabase) }
     private val noteWriteJournal by lazy { NoteWriteJournal(notesDatabase.journal()) }
+    // Prototype only: release builds can neither read the mode as on nor switch it on.
+    private val roomFirst by lazy {
+        RoomFirstSwitch(
+            db = notesDatabase,
+            sequencer = noteWriteSequencer,
+            flags = PrefsRoomFirstFlagStore(getSharedPreferences(PrefsRoomFirstFlagStore.FILE, Context.MODE_PRIVATE)),
+            backups = RoomFirstBackups(File(filesDir, RoomFirstBackups.DIR)),
+            available = BuildConfig.DEBUG,
+        )
+    }
+    private val roomFirstWriter by lazy { RoomFirstWriter(notesDatabase, noteWriteSequencer, enabled = roomFirst::isOn) }
     private lateinit var releaseUpdater: GithubReleaseUpdater
     private var selectedCityForPdf: String? = null
 
@@ -321,6 +340,10 @@ class MainActivity : AppCompatActivity() {
                 postRoomResult(RoomBridgeScripts.importResult(false, 0, 0, message))
                 return
             }
+            if (refusedInRoomFirst("import", "-")) {
+                postRoomResult(RoomBridgeScripts.importResult(false, 0, 0, ROOM_FIRST_ON))
+                return
+            }
             val sequencer = noteWriteSequencer
             RoomNoteWriteSequencer.writeScope.launch {
                 var inserted = 0
@@ -350,6 +373,10 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun deleteRoomNote(city: String, id: String, requestId: String) {
             if (city.isBlank() || id.isBlank() || requestId.isBlank()) return
+            if (refusedInRoomFirst("delete", requestId)) {
+                postRoomResult(RoomBridgeScripts.deleteResult(requestId, false, ROOM_FIRST_ON))
+                return
+            }
             val sequencer = noteWriteSequencer
             val ticket = try {
                 sequencer.nextTicket()
@@ -378,6 +405,10 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun upsertRoomNote(city: String, noteJson: String, requestId: String) {
             if (city.isBlank() || city.length > 120 || noteJson.length > 100_000 || requestId.length > 100) return
+            if (refusedInRoomFirst("upsert", requestId)) {
+                postRoomResult(RoomBridgeScripts.writeResult(requestId, false, ROOM_FIRST_ON))
+                return
+            }
             val item = try {
                 JSONObject(noteJson)
             } catch (_: Exception) {
@@ -433,6 +464,10 @@ class MainActivity : AppCompatActivity() {
                 postRoomResult(RoomBridgeScripts.reconcileResult(requestId, null, message))
                 return
             }
+            if (refusedInRoomFirst("reconcile", requestId)) {
+                postRoomResult(RoomBridgeScripts.reconcileResult(requestId, null, ROOM_FIRST_ON))
+                return
+            }
             val sequencer = noteWriteSequencer
             // Writes the page makes after this call get larger tickets and are left for the next start.
             val cutoff = try {
@@ -482,6 +517,7 @@ class MainActivity : AppCompatActivity() {
             val resolution = ResolutionAction.entries.firstOrNull { it.name == action }
             val rejected = when {
                 resolution == null -> "Unknown resolution action"
+                refusedInRoomFirst("resolution", requestId) -> ROOM_FIRST_ON
                 else -> LegacyRoomImporter.oversizedPayloadMessage(json)
             }
             if (rejected != null) {
@@ -506,6 +542,10 @@ class MainActivity : AppCompatActivity() {
         fun undoRoomResolution(backupId: String, requestId: String) {
             val id = backupId.toLongOrNull()
             if (requestId.isBlank() || requestId.length > 100 || id == null) return
+            if (refusedInRoomFirst("undo", requestId)) {
+                postRoomResult(RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.RESOLUTION_RESULT, requestId, null, ROOM_FIRST_ON))
+                return
+            }
             val sequencer = noteWriteSequencer
             RoomNoteWriteSequencer.writeScope.launch {
                 try {
@@ -538,6 +578,96 @@ class MainActivity : AppCompatActivity() {
 
         private fun validSafetyRequest(requestId: String, key: String) =
             requestId.isNotBlank() && requestId.length <= 100 && key.contains("::") && key.length <= 400
+
+        /** In Room-first mode localStorage is not the source: Room writes derived from it are refused. */
+        private fun refusedInRoomFirst(what: String, requestId: String): Boolean {
+            val on = try {
+                roomFirst.isOn()
+            } catch (e: Exception) {
+                Log.e(ROOM_LOG, "room-first mode unreadable error=${RoomBridgeErrors.safe(e)}")
+                false
+            }
+            if (on) Log.w(ROOM_LOG, "$what refused request=$requestId reason=room-first")
+            return on
+        }
+
+        /** Synchronous: the page decides its note source before it reads anything. Release builds: always off. */
+        @JavascriptInterface
+        fun roomFirstMode(): String = try {
+            roomFirst.modeJson().toString()
+        } catch (e: Exception) {
+            Log.e(ROOM_LOG, "room-first mode failed error=${RoomBridgeErrors.safe(e)}")
+            """{"available":false,"on":false,"backupId":null}"""
+        }
+
+        /** Room's committed notes for the Room-first page (debug prototype). */
+        @JavascriptInterface
+        fun readRoomFirst(requestId: String) {
+            if (requestId.isBlank() || requestId.length > 100) return
+            RoomNoteWriteSequencer.writeScope.launch {
+                try {
+                    if (!roomFirst.isOn()) throw RoomBridgeFailure(ROOM_FIRST_OFF)
+                    val snapshot = roomFirstWriter.snapshot()
+                    Log.i(ROOM_LOG, "room-first read request=$requestId ${snapshot.logLine()}")
+                    postRoomResult(RoomBridgeScripts.roomFirstResult(RoomBridgeScripts.ROOM_FIRST_SNAPSHOT, requestId, snapshot.toJson(), null))
+                } catch (e: Exception) {
+                    Log.e(ROOM_LOG, "room-first read failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.roomFirstResult(RoomBridgeScripts.ROOM_FIRST_SNAPSHOT, requestId, null, RoomBridgeErrors.safe(e)))
+                }
+            }
+        }
+
+        /** One Room-first change; the reply is posted only after the transaction committed or was refused. */
+        @JavascriptInterface
+        fun writeRoomFirst(payload: String, requestId: String) {
+            if (requestId.isBlank() || requestId.length > 100) return
+            RoomNoteWriteSequencer.writeScope.launch {
+                try {
+                    val write = RoomFirstWrite.parse(payload)
+                    val result = roomFirstWriter.write(write)
+                    Log.i(ROOM_LOG, "room-first write request=$requestId op=${write.op} status=${result.status} ticket=${result.ticket ?: "-"}")
+                    postRoomResult(RoomBridgeScripts.roomFirstResult(RoomBridgeScripts.ROOM_FIRST_RESULT, requestId, result.toJson(), null))
+                } catch (e: Exception) {
+                    Log.e(ROOM_LOG, "room-first write failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.roomFirstResult(RoomBridgeScripts.ROOM_FIRST_RESULT, requestId, null, RoomBridgeErrors.safe(e)))
+                }
+            }
+        }
+
+        /** PREFLIGHT / ENABLE / DISABLE / STATUS of the debug-only source switch; [json] is the page's localStorage notes. */
+        @JavascriptInterface
+        fun roomFirstSwitch(action: String, json: String, requestId: String) {
+            if (requestId.isBlank() || requestId.length > 100) return
+            LegacyRoomImporter.oversizedPayloadMessage(json)?.let { message ->
+                postRoomResult(RoomBridgeScripts.roomFirstResult(RoomBridgeScripts.ROOM_FIRST_SWITCH, requestId, null, message))
+                return
+            }
+            RoomNoteWriteSequencer.writeScope.launch {
+                try {
+                    val result = when (action) {
+                        "STATUS" -> roomFirst.status()
+                        "PREFLIGHT", "ENABLE", "DISABLE" -> {
+                            val outcome = when (action) {
+                                "PREFLIGHT" -> roomFirst.preflight(json)
+                                "ENABLE" -> roomFirst.enable(json)
+                                else -> roomFirst.disable(json)
+                            }
+                            Log.i(
+                                ROOM_LOG,
+                                "room-first switch request=$requestId action=$action code=${outcome.code} " +
+                                    "backup=${outcome.backup?.id ?: "-"} ${outcome.preflight?.logLine() ?: ""}"
+                            )
+                            outcome.toJson().put("mode", roomFirst.modeJson())
+                        }
+                        else -> throw RoomBridgeFailure("Unknown switch action")
+                    }
+                    postRoomResult(RoomBridgeScripts.roomFirstResult(RoomBridgeScripts.ROOM_FIRST_SWITCH, requestId, result, null))
+                } catch (e: Exception) {
+                    Log.e(ROOM_LOG, "room-first switch failed request=$requestId action=${action.take(12)} error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.roomFirstResult(RoomBridgeScripts.ROOM_FIRST_SWITCH, requestId, null, RoomBridgeErrors.safe(e)))
+                }
+            }
+        }
 
         @JavascriptInterface
         fun requestRoomNotes() {

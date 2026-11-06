@@ -1,5 +1,20 @@
 # DEVAM
 
+## 2026-11-06 — P8 Room ana kaynak geçişi / izole prototip
+
+- **Dal:** `feature/room-migration-validation` (başlangıç `a4eba8e`, `main` dokunulmadı, push/merge yok)
+- **Durum:** tamamlandı (emülatörde; yalnız debug, üretimde kapalı)
+- **Ne yapıldı:**
+  - Şema v4'te kaldı. Room-first yazması (`RoomFirstWriter`) not başına bilet karşılaştırmasıyla çalışıyor ve tek transaction içinde yapılıyor. "Kaydedildi" yalnız COMMIT'ten sonra gönderilen yanıtla gösteriliyor.
+  - Tekrar gönderilen veya yanıtı kaybolmuş istek iki kez uygulanmıyor (`ALREADY_SAVED`). Eski sürümden gelen istek `CONFLICT`, tombstone'a yazma `DELETED` alıyor; tombstone diriltilmiyor.
+  - Geçiş yalnız `BuildConfig.DEBUG` derlemesinde ve açık onayla yapılıyor. Önce denetim temiz olmalı (11 fark türünden biri bile varsa ret), ardından SHA-256 doğrulamalı yedek alınıyor (silinmiyor), en son `commit()` ile bayrak yazılıyor. Dönüşte `tur_v10` Room'dan yeniden yazılıp denetleniyor.
+  - Mod açıkken `localStorage`'dan türeyen bütün Room yazmaları native tarafta reddediliyor; P7 ekranı bunu bildiriyor.
+  - Cihazda ölçülen ayar: `wal` / `synchronous=NORMAL`. Süreç ölümüne dayanıklı; güç kesintisinde son commit'ler geri alınabilir.
+  - Emülatörde (API 37): onaylanan notlar `force-stop`, yazma sırasında öldürme ve döndürmeden sonra aynen geri okundu. Kayıp yanıt ve aynı istek kimliği `ALREADY_SAVED` döndü. 400 düzenleme 4 transaction'a indi.
+  - Ayrıca cihazda doğrulananlar: kesilen ve tekrarlanan dönüş, v1 → v4 zinciri, P7 uyumu. Logcat'te not verisi yok. Ekran ayarları geri alındı.
+  - `assembleDebug` + `testDebugUnitTest` 171/171 geçti (33 yeni). Rapor güncellendi.
+- **Sonraki tek somut adım:** Üretim kararı: `synchronous=FULL` mı, yoksa güç kesintisi riski kabul mü? Onay bekleyen düzenlemeler için native kalıcı kuyruk gerekip gerekmediğine de karar verilmeli. Ardından fiziksel cihazda aynı senaryolar denenmeli.
+
 ## 2026-11-06 — P7 güvenli veri uzlaştırma ekranı
 
 - **Dal:** `feature/room-migration-validation` (başlangıç `c2819fa`, `main` dokunulmadı, push/merge yok)

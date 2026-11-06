@@ -1,5 +1,6 @@
 package com.sehirnotlari.data
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -68,7 +69,7 @@ class RoomMigrationGuardTest {
     @Test
     fun webViewReconcilesReadOnlyAndLogsCountsOnly() {
         val html = sourceFile("src/main/assets/index.html").readText()
-        assertTrue(html.contains("window.addEventListener('load',()=>requestRoomReconcile(true));"))
+        assertTrue(html.contains("window.addEventListener('load',()=>{if(RF_MODE)rfStart();else requestRoomReconcile(true);});"))
         assertTrue(html.contains("window.Android.reconcileRoomNotes(JSON.stringify(DB),requestId,apply!==false)"))
         val handler = html.substringAfter("window.onRoomReconcileResult=function").substringBefore("\n};")
         assertFalse(handler.contains("sv("))
@@ -146,6 +147,61 @@ class RoomMigrationGuardTest {
         assertTrue(Regex("""@media\(max-width:360px\)\{[^}]*\.ds-cells""").containsMatchIn(html))
         val back = html.substringAfter("function handleAndroidBack").substringBefore("\n}")
         assertTrue(back.indexOf("dsOv") in 0 until back.indexOf("'drawer'"))
+    }
+
+    @Test
+    fun roomFirstModeIsDebugOnlyAndOptIn() {
+        val activity = sourceFile("src/main/java/com/sehirnotlari/MainActivity.kt").readText()
+        assertEquals(1, Regex("""RoomFirstSwitch\(""").findAll(activity).count())
+        assertEquals(1, Regex("""available = BuildConfig\.DEBUG,""").findAll(activity).count())
+        assertTrue(activity.contains("RoomFirstWriter(notesDatabase, noteWriteSequencer, enabled = roomFirst::isOn)"))
+        val gradle = sourceFile("build.gradle.kts").readText()
+        assertFalse(gradle.contains("isDebuggable = true"))
+        assertFalse(Regex("""buildConfigField\([^)]*DEBUG""").containsMatchIn(gradle))
+        val mode = sourceFile("src/main/java/com/sehirnotlari/data/RoomFirstMode.kt").readText()
+        assertTrue(mode.contains("fun isOn(): Boolean = available && flags.read().enabled"))
+        // Every Room write derived from localStorage is refused while Room is the source.
+        listOf("import", "delete", "upsert", "reconcile", "resolution", "undo").forEach {
+            assertTrue(it, activity.contains("refusedInRoomFirst(\"$it\""))
+        }
+    }
+
+    @Test
+    fun productionNoteStorageIsUnchangedOutsideRoomFirstMode() {
+        val html = sourceFile("src/main/assets/index.html").readText()
+        assertTrue(html.contains("const RF_MODE=!!(RF_INFO&&RF_INFO.available===true&&RF_INFO.on===true);"))
+        assertTrue(html.contains("let DB=RF_MODE?{}:(()=>{try{return JSON.parse(localStorage.getItem(NKEY))||{};}catch{return{};}})();"))
+        assertTrue(html.contains("const sv=()=>{if(RF_MODE){rfCommitFromDB();return;}localStorage.setItem(NKEY,JSON.stringify(DB));};"))
+        // Writes to the production key: sv() and the explicit, audited switch back from Room-first.
+        assertEquals(2, Regex("""localStorage\.setItem\(NKEY""").findAll(html).count())
+        val back = html.substringAfter("function rfSwitchClick").substringBefore("\n}")
+        assertTrue(back.contains("localStorage.setItem(NKEY,text);"))
+        assertTrue(back.indexOf("localStorage.setItem(NKEY") < back.indexOf("['DISABLE',text]"))
+        listOf("mirrorNewNoteToRoom", "mirrorDeletedNoteToRoom").forEach {
+            assertTrue(it, html.contains("function $it(city,"))
+            assertTrue(it, html.substringAfter("function $it(").substringBefore("\n}").contains("\n  if(RF_MODE)return;"))
+        }
+        assertTrue(html.contains("<script src=\"room-first.js\"></script>"))
+    }
+
+    @Test
+    fun roomFirstPageLogsCodesAndCountsOnly() {
+        val html = sourceFile("src/main/assets/index.html").readText()
+        val block = html.substringAfter("// ── ROOM-FIRST PROTOTİPİ").substringBefore("// CRUD")
+        assertTrue(block.length > 2000)
+        val logs = Regex("""console\.\w+\(([^;]*)""").findAll(block).map { it.groupValues[1] }.toList()
+        assertTrue(logs.size >= 6)
+        val allowed = setOf("e", "message", "out", "op", "result", "status", "followUp", "snap", "active", "tombstones", "resent", "code")
+        logs.forEach { log ->
+            assertTrue("unexpected log: $log", log.startsWith("'[RoomFirst] "))
+            val values = Regex("""[A-Za-z_]\w*""").findAll(log.replace(Regex("""'[^']*'"""), "")).map { it.value }.toSet()
+            assertTrue("note data logged: $log", allowed.containsAll(values))
+        }
+        val section = html.substringAfter("<section class=\"bk-card ds-card\" id=\"roomFirstDev\"").substringBefore("</section>")
+        assertTrue(section.contains("hidden"))
+        assertTrue(Regex("""id="rfHead" role="status"""").containsMatchIn(section))
+        assertTrue(section.contains("id=\"rfSwitch\" disabled>"))
+        Regex("""<button\b[^>]*>""").findAll(section).forEach { assertTrue(it.value, it.value.contains("type=\"button\"")) }
     }
 
     private fun sourceFile(relative: String): File {

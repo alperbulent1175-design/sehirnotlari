@@ -61,4 +61,21 @@ class RoomBridgeScriptsTest {
             RoomBridgeScripts.dataSafetyResult("alert", "ds-3", null, null)
         }
     }
+
+    @Test
+    fun roomFirstResultsOnlyReachRoomFirstCallbacks() {
+        assertEquals(
+            "window.onRoomFirstResult && window.onRoomFirstResult(\"rf-1\",{\"saved\":true},null);",
+            RoomBridgeScripts.roomFirstResult(RoomBridgeScripts.ROOM_FIRST_RESULT, "rf-1", org.json.JSONObject().put("saved", true), null)
+        )
+        assertEquals(
+            "window.onRoomFirstSnapshot && window.onRoomFirstSnapshot(\"rf-2\",null,\"Room-first mode is off\");",
+            RoomBridgeScripts.roomFirstResult(RoomBridgeScripts.ROOM_FIRST_SNAPSHOT, "rf-2", null, "Room-first mode is off")
+        )
+        listOf("alert", RoomBridgeScripts.SAFETY_STATUS).forEach { name ->
+            org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+                RoomBridgeScripts.roomFirstResult(name, "rf-3", null, null)
+            }
+        }
+    }
 }
