@@ -204,6 +204,24 @@ class RoomMigrationGuardTest {
         Regex("""<button\b[^>]*>""").findAll(section).forEach { assertTrue(it.value, it.value.contains("type=\"button\"")) }
     }
 
+    @Test
+    fun aiFeaturesAreOffWithoutAKeyAndNeverShowRawErrors() {
+        val activity = sourceFile("src/main/java/com/sehirnotlari/MainActivity.kt").readText()
+        assertTrue(activity.contains("private val aiEnabled = BuildConfig.GEMINI_API_KEY.isNotBlank()"))
+        assertTrue(activity.contains("fun aiAvailable(): Boolean = aiEnabled"))
+        listOf("fun startRecording()", "fun startMultiModalRecording()", "fun pickPDF(city: String)").forEach { name ->
+            val body = activity.substringAfter(name).substringBefore("@JavascriptInterface")
+            assertTrue("$name is not gated", Regex("""^\s*\{\s*if \(refuseWithoutAi\(\)\) return""").containsMatchIn(body))
+        }
+        val guide = activity.substringAfter("fun getCityGuide(city: String)").substringBefore("@JavascriptInterface")
+        assertTrue(guide.indexOf("if (!aiEnabled)") in 0 until guide.indexOf("generateContent"))
+        assertFalse(guide.contains("e.message"))
+        val html = sourceFile("src/main/assets/index.html").readText()
+        listOf("'pdfBtn').onclick", "'multiBtn').onclick", "'micBtn').onclick", "function pickPDF()").forEach { handler ->
+            assertTrue("$handler is not gated", html.substringAfter(handler).substringBefore("\n}").contains("aiOff()"))
+        }
+    }
+
     private fun sourceFile(relative: String): File {
         val candidates = listOf(File(relative), File("app/$relative"))
         return candidates.first { it.isFile }

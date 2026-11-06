@@ -74,6 +74,9 @@ import java.util.TimeZone
 private const val ROOM_LOG = "SehirNotlariRoom"
 private const val ROOM_FIRST_ON = "Room-first mode is on"
 private const val ROOM_FIRST_OFF = "Room-first mode is off"
+private const val AI_OFF_MESSAGE = "Yapay zekâ özellikleri bu sürümde kullanılamıyor."
+private const val AI_OFF_GUIDE = "<i>Akıllı rehber bu sürümde kullanılamıyor.</i>"
+private const val AI_GUIDE_FAILED = "<i>Rehber şu an hazırlanamadı. Daha sonra yeniden deneyin.</i>"
 
 class MainActivity : AppCompatActivity() {
 
@@ -100,6 +103,9 @@ class MainActivity : AppCompatActivity() {
     private var audioFile: File? = null
     private var photoFile: File? = null
     private var photoUri: Uri? = null
+
+    // Builds without GEMINI_API_KEY (public releases) must not call the API at all.
+    private val aiEnabled = BuildConfig.GEMINI_API_KEY.isNotBlank()
 
     private val generativeModel = GenerativeModel(
         modelName = "gemini-2.5-flash",
@@ -325,6 +331,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Room writes run in a process scope; a recreated activity's page no longer awaits the old result.
+    private fun refuseWithoutAi(): Boolean {
+        if (aiEnabled) return false
+        runOnUiThread { webView.evaluateJavascript("toast(${JSONObject.quote(AI_OFF_MESSAGE)})", null) }
+        return true
+    }
+
     private fun postRoomResult(script: String) {
         runOnUiThread {
             if (!isDestroyed && ::webView.isInitialized) webView.evaluateJavascript(script, null)
@@ -717,6 +729,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 return
             }
+            if (!aiEnabled) {
+                runOnUiThread { webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote(AI_OFF_GUIDE)})", null) }
+                return
+            }
 
             Log.d("SehirNotlari", "getCityGuide called for city: $city")
             lifecycleScope.launch(Dispatchers.IO) {
@@ -734,15 +750,18 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Error in getCityGuide for city: $city, Exception: ${e.javaClass.simpleName}")
                     withContext(Dispatchers.Main) {
-                        val errorMsg = e.message ?: "Hata oluştu"
-                        webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote("<i>Rehber hazırlanamadı: $errorMsg</i>")})", null)
+                        webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote(AI_GUIDE_FAILED)})", null)
                     }
                 }
             }
         }
 
         @JavascriptInterface
+        fun aiAvailable(): Boolean = aiEnabled
+
+        @JavascriptInterface
         fun startRecording() {
+            if (refuseWithoutAi()) return
             if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                 return
@@ -752,6 +771,7 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun startMultiModalRecording() {
+            if (refuseWithoutAi()) return
             val cameraPermission = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA)
             val micPermission = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO)
             
@@ -838,6 +858,7 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun pickPDF(city: String) {
+            if (refuseWithoutAi()) return
             selectedCityForPdf = city
             runOnUiThread { pdfPickerLauncher.launch("application/pdf") }
         }

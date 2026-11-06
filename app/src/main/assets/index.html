@@ -379,7 +379,7 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
     </div>
   </div>
 
-  <div style="padding:15px;border-top:1px solid var(--brd);font-size:10px;color:var(--txt3);text-align:center">v1.2.0 • AI Destekli</div>
+  <div style="padding:15px;border-top:1px solid var(--brd);font-size:10px;color:var(--txt3);text-align:center">v1.3 • AI Destekli</div>
 </div>
 
 <header class="hdr">
@@ -795,7 +795,14 @@ document.querySelectorAll('.sort-btn').forEach(b=>b.addEventListener('click',()=
 if(localStorage.getItem('theme')==='dark')document.documentElement.setAttribute('data-theme','dark');
 document.getElementById('thBtn').onclick=()=>{const d=isDark();d?document.documentElement.removeAttribute('data-theme'):document.documentElement.setAttribute('data-theme','dark');localStorage.setItem('theme',d?'':'dark');if(lmap&&lmap._addTile)lmap._addTile();updateStyles();};
 document.getElementById('gpsBtn').onclick=()=>{if(!navigator.geolocation){toast('GPS desteklenmiyor.');return;}toast('Konum aranıyor…');navigator.geolocation.getCurrentPosition(async pos=>{try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&accept-language=tr`);const d=await r.json();const city=(d.address.province||d.address.state||'').replace(' İli','').trim();if(city&&CITY_COORDS[city]){lmap.setView(CITY_COORDS[city],8,{animate:true});toast(`📍 ${city}`);setTimeout(()=>openModal(city,IL_BOLGE[city]||'ic'),400);}else toast('Şehir bulunamadı.');}catch{toast('Konum alındı fakat şehir belirlenemedi.');}},err=>toast(['','Konum izni reddedildi.','Konum alınamadı.','Zaman aşımı.'][err.code]||'GPS hatası.'),{timeout:10000});};
+// Public builds ship without an AI key; their AI buttons explain that instead of failing later.
+function aiOff(){
+  const off=!!(window.Android&&typeof window.Android.aiAvailable==='function'&&!window.Android.aiAvailable());
+  if(off)toast('Yapay zekâ özellikleri bu sürümde kullanılamıyor.');
+  return off;
+}
 document.getElementById('pdfBtn').onclick=()=>{
+  if(aiOff())return;
   if(window.Android && window.Android.pickPDF){
     window.Android.pickPDF("");
     toast('📄 PDF Seçiliyor...');
@@ -803,6 +810,7 @@ document.getElementById('pdfBtn').onclick=()=>{
 };
 let isMultiModal = false;
 document.getElementById('multiBtn').onclick=()=>{
+  if(aiOff())return;
   if(window.Android && window.Android.startRecording){
     isMultiModal = true;
     document.getElementById('micTitle').textContent = "📸 Akıllı Analiz";
@@ -815,6 +823,7 @@ document.getElementById('multiBtn').onclick=()=>{
 };
 
 document.getElementById('micBtn').onclick=()=>{
+  if(aiOff())return;
   if(window.Android && window.Android.startRecording){
     isMultiModal = false;
     document.getElementById('micTitle').textContent = "🎤 Sesli Not Al";
@@ -897,6 +906,7 @@ function saveReminder(){
 }
 
 function pickPDF() {
+    if (aiOff()) return;
     if (window.Android && window.Android.pickPDF) {
         window.Android.pickPDF(curCity || "");
         toast('📄 PDF Seçiliyor...');
