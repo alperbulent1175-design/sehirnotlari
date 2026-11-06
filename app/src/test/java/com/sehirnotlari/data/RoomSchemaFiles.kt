@@ -32,13 +32,15 @@ object RoomSchemaFiles {
 
     /** Table, index and room_master_table statements exactly as Room ran them for [version]. */
     fun createStatements(version: Int): List<String> {
-        val entity = notesEntity(version)
-        val indices = entity.getJSONArray("indices")
         val setup = database(version).getJSONArray("setupQueries")
         return buildList {
-            add(entity.getString("createSql").replace("\${TABLE_NAME}", "notes"))
-            for (i in 0 until indices.length()) {
-                add(indices.getJSONObject(i).getString("createSql").replace("\${TABLE_NAME}", "notes"))
+            tables(version).forEach { table ->
+                val entity = entity(version, table)
+                val indices = entity.optJSONArray("indices")
+                add(entity.getString("createSql").replace("\${TABLE_NAME}", table))
+                for (i in 0 until (indices?.length() ?: 0)) {
+                    add(indices!!.getJSONObject(i).getString("createSql").replace("\${TABLE_NAME}", table))
+                }
             }
             for (i in 0 until setup.length()) add(setup.getString(i))
         }

@@ -9,7 +9,12 @@ import com.sehirnotlari.data.RoomNoteDraft
 import com.sehirnotlari.data.RoomNoteImportStore
 import com.sehirnotlari.data.RoomNoteKeys
 import com.sehirnotlari.data.RoomNoteWriteSequencer
+import com.sehirnotlari.data.ResolutionAction
+import com.sehirnotlari.data.applyResolution
+import com.sehirnotlari.data.dataSafetyStatus
+import com.sehirnotlari.data.inspectNote
 import com.sehirnotlari.data.reconcileWithLegacy
+import com.sehirnotlari.data.undoResolution
 import com.sehirnotlari.data.toBridgeError
 import com.sehirnotlari.data.toBridgeSuccess
 import androidx.room.withTransaction
@@ -448,6 +453,91 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        /** Data-safety screen: one note's current difference, both versions and the safe approvals. */
+        @JavascriptInterface
+        fun inspectRoomNote(json: String, key: String, requestId: String) {
+            if (!validSafetyRequest(requestId, key)) return
+            LegacyRoomImporter.oversizedPayloadMessage(json)?.let { message ->
+                postRoomResult(RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.INSPECT_RESULT, requestId, null, message))
+                return
+            }
+            val sequencer = noteWriteSequencer
+            RoomNoteWriteSequencer.writeScope.launch {
+                try {
+                    val plan = notesDatabase.inspectNote(sequencer, json, key)
+                    Log.i(ROOM_LOG, "inspect request=$requestId kind=${plan.kind ?: "NONE"} options=${plan.options.count { it.enabled }}")
+                    postRoomResult(RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.INSPECT_RESULT, requestId, plan.toJson(), null))
+                } catch (e: Exception) {
+                    Log.e(ROOM_LOG, "inspect failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.INSPECT_RESULT, requestId, null, RoomBridgeErrors.safe(e)))
+                }
+            }
+        }
+
+        /** Applies one user-approved change to Room after backing up the row; localStorage is not touched. */
+        @JavascriptInterface
+        fun applyRoomResolution(json: String, key: String, action: String, token: String, confirmed: Boolean, requestId: String) {
+            if (!validSafetyRequest(requestId, key) || token.length > 200) return
+            val resolution = ResolutionAction.entries.firstOrNull { it.name == action }
+            val rejected = when {
+                resolution == null -> "Unknown resolution action"
+                else -> LegacyRoomImporter.oversizedPayloadMessage(json)
+            }
+            if (rejected != null) {
+                Log.e(ROOM_LOG, "resolution failed request=$requestId error=$rejected")
+                postRoomResult(RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.RESOLUTION_RESULT, requestId, null, rejected))
+                return
+            }
+            val sequencer = noteWriteSequencer
+            RoomNoteWriteSequencer.writeScope.launch {
+                try {
+                    val outcome = notesDatabase.applyResolution(sequencer, json, key, resolution!!, token, confirmed)
+                    Log.i(ROOM_LOG, "resolution request=$requestId action=$action code=${outcome.code} backup=${outcome.backupId ?: "-"}")
+                    postRoomResult(RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.RESOLUTION_RESULT, requestId, outcome.toJson(), null))
+                } catch (e: Exception) {
+                    Log.e(ROOM_LOG, "resolution failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.RESOLUTION_RESULT, requestId, null, RoomBridgeErrors.safe(e)))
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun undoRoomResolution(backupId: String, requestId: String) {
+            val id = backupId.toLongOrNull()
+            if (requestId.isBlank() || requestId.length > 100 || id == null) return
+            val sequencer = noteWriteSequencer
+            RoomNoteWriteSequencer.writeScope.launch {
+                try {
+                    val outcome = notesDatabase.undoResolution(sequencer, id)
+                    Log.i(ROOM_LOG, "undo request=$requestId backup=$id code=${outcome.code}")
+                    postRoomResult(RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.RESOLUTION_RESULT, requestId, outcome.toJson(), null))
+                } catch (e: Exception) {
+                    Log.e(ROOM_LOG, "undo failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.RESOLUTION_RESULT, requestId, null, RoomBridgeErrors.safe(e)))
+                }
+            }
+        }
+
+        /** Repairs and lost writes from the journal plus user-resolution backups; survives restarts. */
+        @JavascriptInterface
+        fun requestDataSafetyStatus(requestId: String) {
+            if (requestId.isBlank() || requestId.length > 100) return
+            val sequencer = noteWriteSequencer
+            RoomNoteWriteSequencer.writeScope.launch {
+                try {
+                    val status = notesDatabase.dataSafetyStatus(sequencer)
+                    Log.i(ROOM_LOG, "status request=$requestId ${status.logLine()}")
+                    postRoomResult(RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.SAFETY_STATUS, requestId, status.toJson(), null))
+                } catch (e: Exception) {
+                    Log.e(ROOM_LOG, "status failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.SAFETY_STATUS, requestId, null, RoomBridgeErrors.safe(e)))
+                }
+            }
+        }
+
+        private fun validSafetyRequest(requestId: String, key: String) =
+            requestId.isNotBlank() && requestId.length <= 100 && key.contains("::") && key.length <= 400
 
         @JavascriptInterface
         fun requestRoomNotes() {

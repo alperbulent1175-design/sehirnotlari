@@ -438,3 +438,139 @@ Hata yolu denemesinden önceki son günlük durumu: 331 `APPLIED`, 1 `IGNORED`, 
 4. **WebView `localStorage` kaybı:** Ana kaynak, süreç ölümünde son saniyelerdeki yazmaları kaybedebiliyor. Toparlama bu yazmaları geri getiremez; yalnız Room'u ezmemeyi ve kaybı saymayı garanti eder. Kalıcı çözüm Room'u ana kaynak yapmak veya `localStorage` yazmasını onaylı hâle getirmektir; ikisi de bu fazın kapsamı dışında.
 5. **Günlük öncesi farklar:** P6'dan önce oluşmuş farkların kanıtı olmadığı için hiçbiri otomatik düzeltilmez.
 6. Fiziksel cihaz ve eski API sürümleri yine denenmedi. Gemini log temizliği cihazda çalıştırılmadı. Önceki riskler sürüyor: geri dönüş yok (v3 → v2 APK'sı Room'u açamaz), Room ana kaynak değil.
+
+## P7 — Güvenli veri uzlaştırma ekranı (6 Kasım 2026)
+
+Başlangıç: `c2819fa5fb4554a207364533f4dcf23aa970a27b`. Push/merge yok, `main` değişmedi. `localStorage` (`tur_v10`) ana kaynak olarak kaldı: ekrandaki hiçbir işlem ona yazmıyor ve cihazda testlerden önce ve sonra alınan kopyalar bayt bayt aynı çıktı. Room ana kaynak yapılmadı. Otomatik geçiş açılmadı. Belirsiz kayıtlar yalnız kullanıcı onayıyla değişiyor.
+
+### Mimari inceleme
+- **Raporun WebView'a aktarımı:** Açılışta JS, `reconcileRoomNotes(JSON.stringify(DB), id, true)` çağırır. Native taraf raporu `onRoomReconcileResult(id, report, error)` ile döndürür. Not anahtarlı ayrıntılar yalnız `window.roomReconcileReport` belleğinde tutulur.
+- **Yeniden açılış ve döndürme:** Activity ve WebView yeniden oluştuğu için rapor her sayfa yüklemesinde yeniden hesaplanır. Çözülmemiş farklar kaybolmaz, çünkü veri farklı kaldıkça yeniden bulunurlar. Ancak **otomatik onarımlar ve kaybolan yazmalar ikinci açılışta raporda 0 görünüyordu**; bilgi kayboluyordu. Ekran bu sayıları artık günlükten (`REPAIRED`/`LOST` kayıtları, son 30 gün) ve yedek tablosundan okuyor.
+- **Günlük yaşam döngüsü:** `PENDING` → `APPLIED`/`IGNORED`/`REJECTED`/`FAILED`; açılışta toparlama → `REPAIRED`/`SUPERSEDED`/`LOST`. Çözülmüş kayıtlar 30 gün sonra budanır. **P6 hatası düzeltildi:** budama `createdAt`'e göre yapılıyordu. Uzun süre önce kesilmiş bir yazmanın onarımı, sakladığı önceki satırla (`previousJson`) birlikte aynı turda silinebiliyordu. Artık `COALESCE(resolvedAt, createdAt)` kullanılıyor. Eski sorguyla başarısız olan bir regresyon testi eklendi.
+- **Köprü protokolü:** Mevcut köprü fonksiyonları ve geri çağırmalar değişmedi. Dört yeni fonksiyon (`inspectRoomNote`, `applyRoomResolution`, `undoRoomResolution`, `requestDataSafetyStatus`) ve beyaz listeli üç geri çağırma (`onRoomInspectResult`, `onRoomResolutionResult`, `onDataSafetyStatus`) eklendi. Hepsi istek kimliğiyle eşleşir; bilinmeyen kimlikli sonuçlar yok sayılır.
+- **Yerleşim:** Uygulamada ayrı bir "Ayarlar" ekranı yok. Veri ayarları çekmecedeki **"Veri ve Yedek"** sekmesinde. "🛡️ Veri Güvenliği" bölümü o sekmenin ilk kartı oldu. İnceleme bekleyen fark varsa çekmecedeki sekmede bir rozet görünür.
+
+### Tasarım
+- **Şema v4:** Yeni tablo `note_resolution_backup` (anahtar, şehir, işlem, fark türü, önceki satırın JSON'u, işlem bileti, zaman, geri alınma zamanı). Migration (`MIGRATION_3_4`) yalnız bu tabloyu ve indeksini ekler. `notes` ve günlük tabloları değişmez. Kimlik özeti `2c956b95e63f67a6c80939ca693ddad1`.
+- **İşlemler yalnız Room'u ve her seferinde tek bir notu değiştirir:**
+  - `SYNC_FROM_LOCAL` Room satırını telefondaki notla ekler veya günceller ya da kökeni doğrular.
+  - `MARK_DELETED_IN_ROOM` satırı tombstone yapar; metin silinmez.
+- **Önizleme → onay akışı:**
+  - `inspectRoomNote` iki sürümü, uygulanabilir seçeneği ve bir jeton döndürür. Jeton; Room biletini, silinmiş durumunu ve `localStorage` parmak izini kodlar. Bu adım hiçbir şey yazmaz.
+  - `applyRoomResolution` sıralayıcı kilidi altında ve tek transaction'da çalışır:
+    1. Planı yeniden hesaplar. Jeton farklıysa işlem `STALE` olur, hiçbir şey yazılmaz.
+    2. Seçenek kapalıysa `NOT_ALLOWED`; onay gerekip verilmemişse `CONFIRMATION_REQUIRED` döner.
+    3. Önce önceki satırın yedeği yazılır, sonra değişiklik yeni bir biletle uygulanır.
+- **Geri alma:** Önceki satır birebir geri yazılır. Bu yalnız satır işlemden sonra hiç değişmediyse (`writeTicket == afterTicket`) mümkündür; değiştiyse `UNDO_BLOCKED` döner. Room'a ekleme işlemlerinde geri getirilecek önceki satır yoktur. Bilet sayacının başlangıç değeri yedeklerdeki biletleri de kapsar.
+- **Toplu işlem:**
+  - Varsayılan olarak kapalıdır: kapalı bir `details` bölümünün içindedir, etkinleştirme kutusu işaretsizdir ve düğme devre dışıdır.
+  - Etkinleştirildiğinde ayrıca bir onay kutusu ister.
+  - Yalnız *Room'da eksik* ve *kökeni belirsiz* kayıtları kapsar; Room'un daha yeni olduğu kayıtlar dahil değildir. Hiçbir kaydın üzerine yazmaz.
+  - Her not ayrı incelenir ve ayrı uygulanır; durumu değişen not atlanır.
+- **Loglar:** Logcat'e yalnız işlem kodu, yedek numarası ve sayılar yazılır; konsola `[DataSafety] <kod>` yazılır. Not metni ve anahtar loglanmaz. Bu kural, kaynak koddan denetleyen testlerle korunuyor.
+
+### Kullanıcıya gösterilen durumlar
+| Durum | Başlık |
+| :--- | :--- |
+| Kontrol sürüyor | "Kontrol ediliyor…" |
+| Köprü hatası / zaman aşımı | "Kontrol tamamlanamadı. Notlarınız değişmedi; daha sonra yeniden deneyin." |
+| Fark yok | "Tutarlı: telefondaki notlarınız ve Room kopyası aynı." |
+| İnceleme bekleyen fark | "İnceleme bekleyen N fark var." |
+| Yalnız kanıtlı onarım (önizlemede) | "N fark kanıtla onarılabilir." |
+| Yalnız kökeni belirsiz kayıt | "Fark yok, ancak N kaydın kökeni belirsiz." |
+
+Ayrı sayılar şunlardır: **otomatik onarılan (son 30 gün)**, **inceleme bekleyen**, **kökeni belirsiz**. Gerekirse **kanıtla onarılabilir** ve **kaybolan değişiklik** sayıları da gösterilir. Her fark türünün Türkçe bir etiketi ve açıklaması var: *Room kopyasında eksik*, *İçerik farklı* (farklı alanlar adlarıyla listelenir), *Room'da silinmiş*, *Yalnız Room'da*, *Kökeni belirsiz*, *Kaybolan değişiklik*. "Room daha yeni olabilir" ayrı bir uyarı etiketi olarak gösterilir.
+
+"İncele" penceresinde şunlar gösterilir:
+- korunacak kaynak ve işlemin sonucu;
+- yalnız farklı olan alanlar, telefondaki ve Room'daki değerleriyle yan yana;
+- uyarı ve onay kutusu;
+- işlem sonrası sonuç metni.
+
+"Son işlemler" listesinde her işlem için şu durumlardan biri görünür: "Geri al" düğmesi, "Geri alındı", "Geri alınacak önceki kayıt yok" veya "Not sonradan değiştiği için geri alınamaz".
+
+### Uygulanabilir güvenli işlemler
+| Fark | Düğme | Onay | Sonuç |
+| :--- | :--- | :--- | :--- |
+| Room kopyasında eksik | Room'a ekle | Gerekmez | Satır eklenir. Geri alınacak önceki satır yoktur |
+| İçerik farklı | Room'u telefondaki notla güncelle | **Gerekir** | Room sürümü yedeklenir, sonra değiştirilir; geri alınabilir. Room daha yeni olabilirse veya kökeni belirsizse ek uyarı gösterilir |
+| Kökeni belirsiz | Kökeni doğrula | Gerekmez | Metin değişmez; yalnız `isAI`/`modifiedAt` doldurulur; geri alınabilir |
+| Yalnız Room'da | Room'da silindi olarak işaretle | **Gerekir** | Tombstone olur, metin silinmez; geri alınabilir |
+| Room'da silinmiş | Uygulanamaz (düğme kapalı) | — | **Tombstone diriltilmez**; yalnız bilgi verilir |
+| Kaybolan değişiklik | — | — | Yalnız bilgi verilir (metni kurtarılamaz) |
+| Kanıtlı onarım (önizlemede) | Kanıtlı onarımları uygula | Gerekmez | Açılıştaki otomatik onarımın aynısıdır (P6 kuralları) |
+
+"Yeniden kontrol et" ve sekmenin açılması salt okunur bir önizleme çalıştırır (`requestRoomReconcile(false)`).
+
+### Otomatik testler (P7)
+- `RoomNoteResolverTest` (15, Robolectric, gerçek SQLite). Kapsanan senaryolar:
+  - tutarlı notta seçenek olmaması ve onayın etkisiz kalması;
+  - eksik satırın eklenmesi (geri alma hedefi yok);
+  - üzerine yazmanın onay istemesi, yedeklenmesi ve birebir geri alınması;
+  - Room daha yeniyken yalnız onayla değiştirme;
+  - tombstone'un hiçbir onayla diriltilmemesi;
+  - kökeni belirsiz kaydın metin değişmeden doğrulanması;
+  - yalnız Room'daki notun metni korunarak silindi işaretlenmesi ve geri alınması;
+  - önizlemeden sonra iki taraftan biri değişince işlemin reddedilmesi (`STALE`);
+  - aynı onayın iki kez uygulanması (`ALREADY_CONSISTENT`);
+  - **onay sırasında çökme** (transaction geri alınır; yedek de değişiklik de kalmaz; yeniden denenebilir);
+  - not yeniden değişince geri almanın engellenmesi;
+  - yeniden başlatmada onarım, kayıp ve yedek geçmişinin korunması;
+  - geri alma ve yeniden başlatmadan sonra biletlerin büyümeye devam etmesi;
+  - planın her fark türünde açılış raporuyla aynı sınıflandırmayı yapması;
+  - plan JSON'unun iki sürümü içermesi ve bozuk girdide güvenli hata vermesi.
+- `DataSafetyScriptTest` (15, Rhino ile gerçek `data-safety.js`). Kapsanan senaryolar:
+  - fark yokken ekranın davranışı;
+  - kontrol sürerken ve hata durumunda hiçbir şey iddia edilmemesi;
+  - otomatik onarımların kalıcı geçmişten sayılması ve inceleme listesine girmemesi;
+  - yeniden başlatmadan sonra bekleyen farkların ve önceki onarımların görünmesi;
+  - farkların gruplanması ve Türkçe açıklamalar;
+  - tombstone için hiçbir zaman etkin onay olmaması;
+  - kökeni belirsiz kayıtların ayrı sayılması;
+  - üzerine yazmanın onay kutusu istemesi ve iki sürümü göstermesi;
+  - yalnız Room'daki not;
+  - toplu işlemin yalnız düşük riskli türleri kapsaması;
+  - her native sonuç kodu ve gerekçe için metin bulunması;
+  - geçmişte geri almanın yalnız güvenli olduğunda sunulması;
+  - anahtarların Kotlin'le aynı biçimde olması;
+  - model dosyasının log, depolama ve köprü kullanmaması.
+- `RoomMigrationGuardTest` +2:
+  - Ekran bloğu `localStorage`'a ve `DB`'ye yazmıyor; konsola yalnız kod ve sayı yazıyor.
+  - Erişilebilirlik öznitelikleri doğru: `role=dialog` + `aria-modal`, `role=status` + `aria-live`, her düğmede `type="button"`, 44 px dokunma hedefi, 360 px kırılımı.
+  - Toplu işlem varsayılan olarak kapalı; onay düğmesi başlangıçta devre dışı; geri tuşu önce pencereyi kapatıyor.
+- `RoomBridgeScriptsTest` +1: geri çağırma beyaz listesi.
+- `NoteSchemaContractTest` +1, `NoteSchemaMigrationTest` +1: gerçek v3 dosyası v4'e taşınıyor; satırlar ve günlük korunuyor. `RoomNoteReconcilerTest` +1: budama hatasının regresyon testi.
+
+### Emülatör sonuçları (`emulator-5554`, `SehirNotlari_P5_Test`, API 37, WebView 145)
+Test APK'sı geçici kopyada `versionCode` 101 / `versionName` "101.0" ile derlendi; depodaki sürüm numarası değişmedi. Veriler P6'dan kalan test notlarıdır.
+
+| Senaryo | Sonuç |
+| :--- | :--- |
+| v3 → v4 yükseltme (`install -r`) | `user_version` 4, `integrity ok`. İlk toparlama P6'daki farkları aynen buldu: eksik 1, içerik farkı 2, tombstone 1, yalnız Room 1, kökeni belirsiz 1 |
+| Ekran (dikey) | "İnceleme bekleyen 5 fark var." Sayılar: 3 otomatik onarılan (günlükten; açılış raporunda 0), 5 inceleme bekleyen, 1 kökeni belirsiz, 22 kaybolan değişiklik. Rozet 6 |
+| Her fark için İncele | Doğru düğme ve onay gereksinimi gösterildi. Tombstone için düğme "Uygulanamaz" ve kapalı. Üzerine yazma ve yalnız Room'daki kayıt için düğme onay kutusu işaretlenene kadar kapalı |
+| Üzerine yazma (onaylı) | `APPLIED` döndü, yedek alındı. Aynı jetonla tekrar gönderilince `ALREADY_CONSISTENT` döndü |
+| Eksik satır / kökeni belirsiz / yalnız Room | Sırasıyla `APPLIED` (geri alma yok), `APPLIED`, onaysız `CONFIRMATION_REQUIRED` ve onaylı `APPLIED`. Tekrar gönderilince `ALREADY_CONSISTENT` |
+| Önizlemeden sonra telefondaki not değişti (yalnız gönderilen kopyada) | `STALE`, değişiklik yok |
+| Tombstone'u köprüden onayla zorlama | `NOT_ALLOWED` |
+| Geri alma (arayüzden) | `UNDONE`; ikinci deneme `ALREADY_UNDONE`. Kökeni doğrulama geri alındı ve yeniden uygulandı |
+| Pencere açıkken döndürme | WebView yeniden yüklendi, pencere kapandı. Rapor, sayılar ve 4 işlemlik geçmiş Room'dan geri geldi |
+| İşlem sırasında `force-stop` | İşlem kapanmadan önce bitti: yedek ve satır aynı biletle, birlikte yazılmış; `integrity ok`. Yarım kalan transaction senaryosu birim testinde doğrulandı (cihazda zamanlanamıyor) |
+| Yeniden açılış | 5 işlemlik geçmiş ve çözülmemiş 2 fark korundu |
+| Küçük ekran (300 dp genişlik, yazı ölçeği 1,3) ve erişilebilirlik ağacı | Yatay taşma yok; 44 px'ten küçük düğme yok; karşılaştırma tek sütuna düştü. **Düzeltildi:** onay ve kapat düğmeleri kaydırılınca görünmüyordu; artık pencerenin altına sabitlendi. Erişilebilirlik ağacında pencere `modal=true`, odak pencere başlığında, onay kutusu etiketli, onay düğmesi `disabled`, İncele ve Geri al düğmeleri not adıyla anılıyor. **Düzeltildi:** pencere kapanınca açan düğme yeniden çizilmiş olsa bile odak bölüm başlığına dönüyor |
+| `localStorage` | Bütün işlemlerden sonra `tur_v10` bayt bayt aynı |
+| Logcat | Uygulamanın Room ve WebView satırlarında test başlıkları, içerikleri ve anahtarlar için 0 eşleşme var; yalnız kodlar ve sayılar yazılıyor |
+| Ekran ayarları | `wm size`, `wm density`, `font_scale` ve döndürme eski değerlerine döndürüldü |
+
+### Derleme ve test
+| Komut | Sonuç |
+| :--- | :--- |
+| `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest --rerun-tasks` | **BUILD SUCCESSFUL**. 138 test, 0 başarısız, 0 atlanan (P6'da 102) |
+
+### Kalan riskler
+1. **`localStorage`'a yazan bir işlem yok.** Room'daki sürüm daha yeniyse ekran bunu gösterir, ancak kullanıcı o sürümü telefondaki notlara ancak elle (notu düzenleyerek) taşıyabilir. Bu, "`localStorage` korunacak" sınırı nedeniyle bilinçli bir tercih.
+2. **Tombstone çakışması ekrandan çözülemiyor.** Diriltme yasak olduğu için bu fark kalıcı olarak "İnceleme bekleyen" listesinde kalır.
+3. **Geri alma sınırlı:** Not işlemden sonra değiştiyse geri alınamaz. Room'a ekleme işlemlerinde geri getirilecek önceki satır yoktur.
+4. **Yedekler budanmıyor.** Tablo, kullanıcı işlemi sayısıyla sınırlı olarak büyür. Ekran son 50 işlemi gösteriyor.
+5. Cihazda işlem tam transaction sırasında öldürülemedi (işlem milisaniyeler sürüyor); bu durum yalnız birim testiyle kanıtlandı. Emülatörde sonuçların ekrana ulaşması yaklaşık 3 sn sürebiliyor; bu sürede ekranda "Kontrol ediliyor…" görünüyor.
+6. Önceki riskler sürüyor: Room ana kaynak değil, WebView `localStorage` kaybı, fiziksel cihaz ve eski API sürümleri denenmedi, geri dönüş yok (v4 → v3 APK'sı Room'u açamaz).

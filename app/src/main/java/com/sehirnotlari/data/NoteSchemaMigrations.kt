@@ -49,5 +49,19 @@ object NoteSchemaMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    /** v3 → v4 only adds the user-resolution backup table; `notes` and the journal are not touched. */
+    val MIGRATION_3_4_SQL: List<String> = listOf(
+        "CREATE TABLE IF NOT EXISTS `note_resolution_backup` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`noteKey` TEXT NOT NULL, `city` TEXT NOT NULL, `action` TEXT NOT NULL, `kind` TEXT NOT NULL, " +
+            "`beforeJson` TEXT, `afterTicket` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `undoneAt` INTEGER)",
+        "CREATE INDEX IF NOT EXISTS `index_note_resolution_backup_noteKey` ON `note_resolution_backup` (`noteKey`)",
+    )
+
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            MIGRATION_3_4_SQL.forEach(db::execSQL)
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 }

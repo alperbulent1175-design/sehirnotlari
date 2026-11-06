@@ -1,5 +1,19 @@
 # DEVAM
 
+## 2026-11-06 — P7 güvenli veri uzlaştırma ekranı
+
+- **Dal:** `feature/room-migration-validation` (başlangıç `c2819fa`, `main` dokunulmadı, push/merge yok)
+- **Durum:** tamamlandı (emülatörde)
+- **Ne yapıldı:**
+  - Çekmecedeki "Veri ve Yedek" sekmesine "🛡️ Veri Güvenliği" bölümü eklendi; uygulamada ayrı bir Ayarlar ekranı yok. Bölüm Room ile `localStorage` tutarlılığını, otomatik onarılan (son 30 gün), inceleme bekleyen ve kökeni belirsiz kayıt sayılarını ve Türkçe fark açıklamalarını gösteriyor.
+  - Her fark için önizleme penceresi var: iki sürüm yan yana, korunacak kaynak, işlemin sonucu ve gerektiğinde onay kutusu.
+  - İşlemler yalnız Room'u ve tek notu değiştiriyor. Jetonla, kilit altında ve tek transaction'da çalışıyor. Önce yedek alınıyor (şema v4, `note_resolution_backup`), işlemler geri alınabiliyor.
+  - Tombstone diriltilmiyor. Room'un daha yeni olduğu veya kökeni belirsiz kayıtlar onaysız değişmiyor. Toplu işlem varsayılan olarak kapalı.
+  - Otomatik onarım ve kayıp sayıları artık yeniden açılışta günlükten okunuyor. P6'daki budama hatası (`createdAt` yerine `resolvedAt`) düzeltildi.
+  - Emülatörde v3 → v4 yükseltmesi, bütün işlemler, döndürme, `force-stop`, küçük ekran ve erişilebilirlik ağacı doğrulandı. `tur_v10` değişmedi; loglarda not verisi yok.
+  - `assembleDebug` + `testDebugUnitTest` 138/138 geçti. Rapor güncellendi.
+- **Sonraki tek somut adım:** Room'u ana kaynak yapma planı (`localStorage` kaybı ve "Room daha yeni" farklarının ekrandan telefona taşınabilmesi için); tombstone çakışmaları için kullanıcı kararı tasarımı.
+
 ## 2026-11-06 — P6 veri tutarlılığı ve güvenli toparlama
 
 - **Dal:** `feature/room-migration-validation` (başlangıç `316ef27`, `main` dokunulmadı, push/merge yok)

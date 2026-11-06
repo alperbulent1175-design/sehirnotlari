@@ -20,7 +20,8 @@ class RoomMigrationGuardTest {
         assertFalse(source.contains("fallbackToDestructiveMigration"))
         assertFalse(source.contains("fallbackToDestructiveMigrationOnDowngrade"))
         assertTrue(source.contains("city_notes.db"))
-        assertTrue(source.contains("version = 3, exportSchema = true"))
+        assertTrue(source.contains("version = 4,"))
+        assertTrue(source.contains("exportSchema = true"))
         assertTrue(source.contains(".addMigrations(*NoteSchemaMigrations.ALL)"))
     }
 
@@ -29,8 +30,9 @@ class RoomMigrationGuardTest {
         val migrations = sourceFile("src/main/java/com/sehirnotlari/data/NoteSchemaMigrations.kt").readText()
         assertTrue(migrations.contains("Migration(1, 2)"))
         assertTrue(migrations.contains("Migration(2, 3)"))
-        assertTrue(migrations.contains("arrayOf(MIGRATION_1_2, MIGRATION_2_3)"))
-        (1..3).forEach { assertTrue(sourceFile("schemas/com.sehirnotlari.data.CityNotesDatabase/$it.json").isFile) }
+        assertTrue(migrations.contains("Migration(3, 4)"))
+        assertTrue(migrations.contains("arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)"))
+        (1..4).forEach { assertTrue(sourceFile("schemas/com.sehirnotlari.data.CityNotesDatabase/$it.json").isFile) }
     }
 
     @Test
@@ -103,6 +105,47 @@ class RoomMigrationGuardTest {
         assertFalse(html.contains("\${n.id})"))
         assertFalse(Regex("""\.id\s*[!=]==""").containsMatchIn(html))
         assertTrue(Regex("""NoteIds\.mergeNotes\(""").findAll(html).count() >= 2)
+    }
+
+    @Test
+    fun dataSafetyScreenNeverWritesLocalStorageAndLogsCodesOnly() {
+        val html = sourceFile("src/main/assets/index.html").readText()
+        assertTrue(html.contains("<script src=\"data-safety.js\"></script>"))
+        val block = html.substringAfter("// ── VERİ GÜVENLİĞİ").substringBefore("// Room shadow-write pilot")
+        assertTrue(block.length > 2000)
+        listOf("sv(", "localStorage", "DB=", "DB[", ".splice(", "delete DB", "Android.reconcileRoomNotes").forEach {
+            assertFalse("data-safety block writes notes: $it", block.contains(it))
+        }
+        assertTrue(block.contains("requestRoomReconcile(false)"))
+        val logs = Regex("""console\.\w+\(([^;]*)""").findAll(block).map { it.groupValues[1] }.toList()
+        assertTrue(logs.size >= 6)
+        val allowed = setOf("e", "message", "out", "code", "applied", "skipped")
+        logs.forEach { log ->
+            assertTrue("unexpected log: $log", log.startsWith("'[DataSafety] "))
+            val values = Regex("""[A-Za-z_]\w*""").findAll(log.replace(Regex("""'[^']*'"""), "")).map { it.value }.toSet()
+            assertTrue("note data logged: $log", allowed.containsAll(values))
+        }
+    }
+
+    @Test
+    fun dataSafetyScreenIsAccessibleAndBatchStartsDisabled() {
+        val html = sourceFile("src/main/assets/index.html").readText()
+        val section = html.substringAfter("<section class=\"bk-card ds-card\" id=\"dataSafety\"").substringBefore("</section>")
+        val dialog = html.substringAfter("<div class=\"sub-ov\" id=\"dsOv\">").substringBefore("<!--")
+        assertTrue(Regex("""id="dsHead" role="status" aria-live="polite"""").containsMatchIn(section))
+        assertTrue(Regex("""role="dialog" aria-modal="true" aria-labelledby="dsDlgTitle"""").containsMatchIn(dialog))
+        assertTrue(Regex("""id="dsDlgResult"[^>]*aria-live="polite"""").containsMatchIn(dialog))
+        assertTrue(Regex("""<input type="checkbox" id="dsBatchToggle">""").containsMatchIn(section))
+        assertTrue(section.contains("id=\"dsBatchRun\" disabled>"))
+        assertTrue(dialog.contains("id=\"dsApprove\" disabled hidden>"))
+        (Regex("""<button\b[^>]*>""").findAll(section) + Regex("""<button\b[^>]*>""").findAll(dialog)).forEach {
+            assertTrue("button without type: ${it.value}", it.value.contains("type=\"button\""))
+        }
+        assertTrue(html.contains(".ds-btn{min-height:44px"))
+        assertTrue(html.contains(".ds-check input{width:22px;height:22px"))
+        assertTrue(Regex("""@media\(max-width:360px\)\{[^}]*\.ds-cells""").containsMatchIn(html))
+        val back = html.substringAfter("function handleAndroidBack").substringBefore("\n}")
+        assertTrue(back.indexOf("dsOv") in 0 until back.indexOf("'drawer'"))
     }
 
     private fun sourceFile(relative: String): File {

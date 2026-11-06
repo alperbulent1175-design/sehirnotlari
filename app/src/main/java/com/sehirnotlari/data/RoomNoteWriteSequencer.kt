@@ -188,11 +188,21 @@ class RoomNoteWriteSequencer(
         fun forDao(dao: NoteDao): RoomNoteWriteSequencer =
             RoomNoteWriteSequencer(store = RoomNoteWriteStore(dao), seed = { dao.maxWriteTicket() ?: 0L })
 
-        /** Seeds above journaled tickets too: a write cut off by a crash must not share a ticket with a new one. */
-        fun forDatabase(db: CityNotesDatabase): RoomNoteWriteSequencer =
+        /**
+         * Seeds above journaled tickets too: a write cut off by a crash must not share a ticket with a new one.
+         * Resolution tickets count as well, since undoing one restores an older ticket on the row.
+         */
+        fun forDatabase(db: CityNotesDatabase, clock: () -> Long = { System.currentTimeMillis() }): RoomNoteWriteSequencer =
             RoomNoteWriteSequencer(
                 store = RoomNoteWriteStore(db.notes()),
-                seed = { maxOf(db.notes().maxWriteTicket() ?: 0L, db.journal().maxTicket() ?: 0L) }
+                clock = clock,
+                seed = {
+                    maxOf(
+                        db.notes().maxWriteTicket() ?: 0L,
+                        db.journal().maxTicket() ?: 0L,
+                        db.resolutions().maxAfterTicket() ?: 0L,
+                    )
+                }
             )
 
         fun shared(db: CityNotesDatabase): RoomNoteWriteSequencer =

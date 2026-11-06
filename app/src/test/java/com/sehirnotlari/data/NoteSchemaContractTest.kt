@@ -55,6 +55,25 @@ class NoteSchemaContractTest {
     }
 
     @Test
+    fun v4AddsOnlyTheResolutionBackupTable() {
+        assertEquals(4, RoomSchemaFiles.database(4).getInt("version"))
+        assertEquals(listOf("notes", "note_write_journal", "note_resolution_backup"), RoomSchemaFiles.tables(4))
+        assertEquals(RoomSchemaFiles.notesEntity(3).toString(), RoomSchemaFiles.notesEntity(4).toString())
+        assertEquals(
+            RoomSchemaFiles.entity(3, "note_write_journal").toString(),
+            RoomSchemaFiles.entity(4, "note_write_journal").toString()
+        )
+        val backup = RoomSchemaFiles.entity(4, "note_resolution_backup")
+        val indices = backup.getJSONArray("indices")
+        val expected = listOf(backup.getString("createSql")) +
+            (0 until indices.length()).map { indices.getJSONObject(it).getString("createSql") }
+        assertEquals(expected.map { it.replace("\${TABLE_NAME}", "note_resolution_backup") }, NoteSchemaMigrations.MIGRATION_3_4_SQL)
+        NoteSchemaMigrations.MIGRATION_3_4_SQL.forEach {
+            assertTrue(it.startsWith("CREATE TABLE IF NOT EXISTS") || it.startsWith("CREATE INDEX IF NOT EXISTS"))
+        }
+    }
+
+    @Test
     fun journalStoresFingerprintsNotNoteText() {
         val columns = RoomSchemaFiles.entity(3, "note_write_journal").getJSONArray("fields")
         val names = (0 until columns.length()).map { columns.getJSONObject(it).getString("columnName") }

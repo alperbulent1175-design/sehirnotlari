@@ -466,6 +466,24 @@ class RoomNoteReconcilerTest {
     }
 
     @Test
+    fun repairOfAWriteCutOffLongAgoKeepsItsBackup() = runBlocking {
+        val before = Process(now = 1_000L)
+        before.save("Bursa", "101", draft("Eski"))
+        val edit = draft("Yeni")
+        val cutOff = before.save("Bursa", "101", edit, completes = false)
+
+        // The app is reopened only after the retention window.
+        val after = Process(now = 1_000L + RoomNoteReconciler.JOURNAL_RETENTION_MS + 5_000L)
+        val report = after.reconcile(localStorage(Triple("Bursa", 101L, edit)))
+
+        assertEquals(ReconcileAction.REPAIRED, report.items.single().action)
+        val repaired = after.entry(cutOff)
+        assertEquals(NoteWriteJournalEntry.REPAIRED, repaired.state)
+        assertEquals("Eski", JSONObject(repaired.previousJson!!).getString("title"))
+        assertEquals(1, report.pruned)
+    }
+
+    @Test
     fun malformedLocalStorageFailsSafelyAndBadEntriesAreSkipped() = runBlocking {
         val process = Process(now = 1_000L)
         process.sequencer.upsert("Bursa", "101", draft("Room"), process.sequencer.nextTicket())

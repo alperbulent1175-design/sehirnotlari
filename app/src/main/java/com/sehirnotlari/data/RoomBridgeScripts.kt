@@ -26,4 +26,16 @@ object RoomBridgeScripts {
 
     fun notesError(error: String): String =
         "window.onRoomNotesError && window.onRoomNotesError(${JSONObject.quote(error)});"
+
+    /** Data-safety screen callbacks; only these names can be called. */
+    const val INSPECT_RESULT = "onRoomInspectResult"
+    const val RESOLUTION_RESULT = "onRoomResolutionResult"
+    const val SAFETY_STATUS = "onDataSafetyStatus"
+    private val dataSafetyCallbacks = setOf(INSPECT_RESULT, RESOLUTION_RESULT, SAFETY_STATUS)
+
+    fun dataSafetyResult(callback: String, requestId: String, result: JSONObject?, error: String?): String {
+        require(callback in dataSafetyCallbacks)
+        val err = if (error == null) "null" else JSONObject.quote(error)
+        return "window.$callback && window.$callback(${JSONObject.quote(requestId)},${result ?: "null"},$err);"
+    }
 }

@@ -156,6 +156,58 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
 [data-theme=dark] .bk-btn.danger{background:#3d1010;color:#ff6b6b;border-color:#7a2020}
 #restoreFile{display:none}
 
+/* DATA SAFETY */
+.ds-card{border-left:4px solid var(--txt3)}
+.ds-card[data-state=consistent]{border-left-color:#27ae60}
+.ds-card[data-state=review],.ds-card[data-state=repairable]{border-left-color:#d35400}
+.ds-card[data-state=uncertain]{border-left-color:#2471a3}
+.ds-card[data-state=failed]{border-left-color:#c0392b}
+.ds-card h2{font-size:14px}
+.ds-card h2:focus{outline:2px solid var(--acc);outline-offset:2px}
+.ds-head{font-size:14px;font-weight:700;color:var(--txt);line-height:1.45;margin:2px 0 6px}
+.ds-meta{font-size:12px;color:var(--txt2);line-height:1.5;margin-bottom:10px}
+.ds-counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:6px;margin-bottom:10px}
+.ds-count{background:var(--surf2);border:1px solid var(--brd);border-radius:var(--rsm);padding:8px 6px;text-align:center}
+.ds-count b{display:block;font-size:20px;line-height:1.2;color:var(--txt)}
+.ds-count span{display:block;font-size:11px;color:var(--txt2);line-height:1.3}
+.ds-list{list-style:none;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.ds-item{border:1px solid var(--brd);border-radius:var(--rsm);padding:10px;background:var(--surf)}
+.ds-item h3{font-size:13px;font-weight:700;color:var(--txt);line-height:1.4;overflow-wrap:anywhere}
+.ds-item h3 small{font-weight:600;color:var(--txt2)}
+.ds-item p{font-size:12px;color:var(--txt2);line-height:1.5;margin:4px 0 8px;overflow-wrap:anywhere}
+.ds-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.ds-tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--surf2);color:var(--txt);border:1px solid var(--brd)}
+.ds-tag.warn{background:#fdebd0;color:#7e3a00;border-color:#f0b27a}
+[data-theme=dark] .ds-tag.warn{background:#4a2a0a;color:#f8c471;border-color:#7e5109}
+.ds-btn{min-height:44px;font-size:14px}
+.ds-actions{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.ds-batch{border-top:1px solid var(--brd);padding-top:10px;margin-top:4px}
+.ds-batch summary{font-size:13px;font-weight:700;color:var(--txt);min-height:44px;display:flex;align-items:center;cursor:pointer}
+.ds-check{display:flex;align-items:flex-start;gap:10px;font-size:13px;color:var(--txt);line-height:1.45;padding:8px 0;cursor:pointer}
+.ds-check input{width:22px;height:22px;flex-shrink:0;margin-top:1px;accent-color:var(--acc)}
+.ds-hist{list-style:none;display:flex;flex-direction:column;gap:6px}
+.ds-hist li{border:1px solid var(--brd);border-radius:var(--rsm);padding:8px 10px;font-size:12px;color:var(--txt2);line-height:1.45;overflow-wrap:anywhere}
+.ds-hist li strong{color:var(--txt)}
+.ds-sub{font-size:12px;font-weight:700;color:var(--txt);margin:12px 0 6px}
+.ds-dlg h3{overflow-wrap:anywhere}
+.ds-dlg .sub-row{position:sticky;bottom:-16px;background:var(--surf);margin:0 -16px -16px;padding:10px 16px 16px;border-top:1px solid var(--brd)}
+.ds-dlg h3:focus{outline:2px solid var(--acc);outline-offset:2px}
+.ds-dlg p{font-size:13px;color:var(--txt2);line-height:1.55;margin-bottom:8px;overflow-wrap:anywhere}
+.ds-dlg .ds-key{font-size:12px;color:var(--txt)}
+.ds-warn{background:#fdebd0;color:#6e3200;border:1px solid #f0b27a;border-radius:var(--rsm);padding:8px 10px}
+[data-theme=dark] .ds-warn{background:#4a2a0a;color:#f8c471;border-color:#7e5109}
+.ds-cmp{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.ds-row{border:1px solid var(--brd);border-radius:var(--rsm);overflow:hidden}
+.ds-row h4{font-size:12px;font-weight:700;color:var(--txt);background:var(--surf2);padding:5px 8px}
+.ds-cells{display:grid;grid-template-columns:1fr 1fr}
+.ds-cells div{padding:6px 8px;font-size:12px;color:var(--txt);line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;max-height:160px;overflow-y:auto}
+.ds-cells div+div{border-left:1px solid var(--brd)}
+.ds-cells em{display:block;font-style:normal;font-size:11px;font-weight:700;color:var(--txt2);margin-bottom:2px}
+.ds-result{font-size:13px;font-weight:600;color:var(--txt);line-height:1.5;margin-top:8px}
+.ds-result:empty{display:none}
+.sub-row button:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:360px){.ds-cells{grid-template-columns:1fr}.ds-cells div+div{border-left:none;border-top:1px solid var(--brd)}.sub-row{flex-direction:column}}
+
 /* MODAL */
 .ov{position:fixed;inset:0;background:rgba(8,14,24,.65);z-index:2000;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 .ov.open{display:flex}
@@ -293,7 +345,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
     <div class="d-item on" data-target="notes"><span class="d-icon">📋</span> Notlar</div>
     <div class="d-item" data-target="favs"><span class="d-icon">❤️</span> Favoriler</div>
     <div class="d-item" data-target="stats"><span class="d-icon">📊</span> İstatistikler</div>
-    <div class="d-item" data-target="backup"><span class="d-icon">💾</span> Veri ve Yedek</div>
+    <div class="d-item" data-target="backup"><span class="d-icon">💾</span> Veri ve Yedek <span class="bdg" id="dsBadge" hidden></span></div>
   </div>
 
   <div class="drawer-help">
@@ -375,6 +427,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
   </div>
   <div class="tab-panel" id="tab-backup">
     <div class="backup-wrap">
+      <section class="bk-card ds-card" id="dataSafety" data-state="checking" aria-labelledby="dsTitle">
+        <h2 class="bk-title" id="dsTitle" tabindex="-1">🛡️ Veri Güvenliği</h2>
+        <p class="bk-desc">Telefondaki notlarınız (ana kayıt, localStorage) ile Room kopyası her açılışta karşılaştırılır. Buradaki işlemler yalnız Room kopyasını değiştirir; notlarınız değişmez.</p>
+        <p class="ds-head" id="dsHead" role="status" aria-live="polite">Kontrol ediliyor…</p>
+        <p class="ds-meta" id="dsMeta"></p>
+        <div class="ds-counts" id="dsCounts"></div>
+        <ul class="ds-list" id="dsItems" aria-label="Farklar"></ul>
+        <div class="ds-actions">
+          <button type="button" class="bk-btn primary ds-btn" id="dsApplyProven" hidden>Kanıtlı onarımları uygula</button>
+          <button type="button" class="bk-btn secondary ds-btn" id="dsCheck">Yeniden kontrol et (değişiklik yapmaz)</button>
+        </div>
+        <details class="ds-batch" id="dsBatch">
+          <summary>Toplu işlem (varsayılan olarak kapalı)</summary>
+          <label class="ds-check"><input type="checkbox" id="dsBatchToggle"> <span>Toplu işlemi etkinleştir. Yalnız Room’da eksik olan kopyalar eklenir ve kökeni belirsiz ama aynı olan kayıtlar doğrulanır; hiçbir kaydın üzerine yazılmaz.</span></label>
+          <button type="button" class="bk-btn secondary ds-btn" id="dsBatchRun" disabled>Düşük riskli farkları uygula</button>
+        </details>
+        <h3 class="ds-sub" id="dsHistTitle" hidden>Son işlemler</h3>
+        <ul class="ds-hist" id="dsHistory" aria-labelledby="dsHistTitle"></ul>
+      </section>
       <div class="bk-card"><div class="bk-title">☁️ Bulut Yedekleme</div><div class="bk-desc">Verilerinizi Firebase üzerine yedekleyin veya geri yükleyin.</div>
         <div style="display:flex;gap:5px">
             <button class="bk-btn primary" style="flex:1" onclick="cloudBackup()">Buluta Yedekle</button>
@@ -460,6 +531,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
   </div>
 </div>
 
+<!-- DATA SAFETY DIALOG -->
+<div class="sub-ov" id="dsOv">
+  <div class="sub-box ds-dlg" role="dialog" aria-modal="true" aria-labelledby="dsDlgTitle">
+    <h3 id="dsDlgTitle" tabindex="-1">Fark yükleniyor…</h3>
+    <div id="dsDlgBody"></div>
+    <p class="ds-result" id="dsDlgResult" role="status" aria-live="polite"></p>
+    <div class="sub-row">
+      <button type="button" class="ok ds-btn" id="dsApprove" disabled hidden>Uygula</button>
+      <button type="button" class="cancel ds-btn" id="dsClose">Kapat</button>
+    </div>
+  </div>
+</div>
+
 <!-- PWA Banner -->
 <div class="pwa-banner" id="pwaBanner">
   <div class="pwa-icon">🗺️</div>
@@ -511,6 +595,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="note-ids.js"></script>
+<script src="data-safety.js"></script>
 <script>
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 let _tt;const toast=m=>{const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2500);};
@@ -672,6 +757,8 @@ document.querySelectorAll('.d-item').forEach(item => {
 
         if (target === 'stats') renderStats();
         if (target === 'favs') renderFavs();
+        // Read-only: notes edited since the startup check are compared again.
+        if (target === 'backup' && dsPhase === 'ready') dsRecheck();
 
         toggleDr(false);
     });
@@ -887,6 +974,11 @@ function closeModal(){ov.classList.remove('open');document.body.style.overflow='
 
 // Android Back Button Bridge
 function handleAndroidBack() {
+    // 0. Veri güvenliği penceresi açıksa kapat
+    if (document.getElementById('dsOv').classList.contains('open')) {
+        dsCloseDialog();
+        return true;
+    }
     // 1. Drawer açıksa kapat
     if (document.getElementById('drawer').classList.contains('open')) {
         toggleDr(false);
@@ -983,6 +1075,7 @@ function roomReconcileFailed(message){
   roomReconcileRequest=null;
   console.error('Room reconcile failed:',message);
   toast('⚠️ Room verileri okunamadı; mevcut notlar korunuyor');
+  dsOnReportFailed();
 }
 window.onRoomReconcileResult=function(requestId,report,error){
   if(requestId!==roomReconcileRequest){console.info('[RoomBridge] reconcile result for unknown request '+requestId);return;}
@@ -991,6 +1084,7 @@ window.onRoomReconcileResult=function(requestId,report,error){
   roomReconcileRequest=null;
   window.roomReconcileReport=report;
   console.info('[RoomBridge] reconcile '+Object.entries(report.summary).map(([k,v])=>k+'='+v).join(' '));
+  dsOnReport();
 };
 function requestRoomReconcile(apply){
   if(!(window.Android&&typeof window.Android.reconcileRoomNotes==='function')){requestRoomPilotSnapshot();return;}
@@ -1002,6 +1096,227 @@ function requestRoomReconcile(apply){
   catch(e){roomReconcileFailed(e.message||'Room bridge unavailable');}
 }
 window.addEventListener('load',()=>requestRoomReconcile(true));
+
+// ── VERİ GÜVENLİĞİ ──────────────────────────────────────────────────────────
+// Rebuilt from native state on every page load (also after rotation): the startup report,
+// journal history and resolution backups all live in Room. Approvals change Room only, one
+// note at a time, after a native backup. Note text is shown here but never logged; the console
+// gets outcome codes only.
+let dsPhase='checking',dsStatus=null,dsView=null,dsMode=null,dsOpener=null,dsCheckedAt=null;
+const dsPending=new Map();
+function dsCall(method,args){
+  return new Promise((resolve,reject)=>{
+    const bridge=window.Android;
+    if(!bridge||typeof bridge[method]!=='function'){reject(new Error('Bridge unavailable'));return;}
+    const id='ds-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+    const timer=setTimeout(()=>{dsPending.delete(id);reject(new Error('Timed out'));},15000);
+    dsPending.set(id,{resolve,reject,timer});
+    try{bridge[method](...args,id);}
+    catch(e){clearTimeout(timer);dsPending.delete(id);reject(new Error('Bridge unavailable'));}
+  });
+}
+function dsSettle(requestId,result,error){
+  const pending=dsPending.get(requestId);
+  if(!pending){console.info('[DataSafety] result for unknown request');return;}
+  clearTimeout(pending.timer);dsPending.delete(requestId);
+  if(error||!result)pending.reject(new Error(error||'Empty result'));else pending.resolve(result);
+}
+window.onRoomInspectResult=dsSettle;
+window.onRoomResolutionResult=dsSettle;
+window.onDataSafetyStatus=dsSettle;
+
+function dsOnReport(){dsPhase='ready';dsCheckedAt=new Date();dsRender();dsRefreshStatus();}
+function dsOnReportFailed(){dsPhase='failed';dsRender();}
+function dsRefreshStatus(){
+  dsCall('requestDataSafetyStatus',[]).then(s=>{dsStatus=s;dsRender();}).catch(e=>console.info('[DataSafety] status unavailable: '+e.message));
+}
+function dsRecheck(){dsPhase='checking';dsRender();requestRoomReconcile(false);}
+const dsTime=t=>new Date(t).toLocaleString('tr-TR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+
+function dsRender(){
+  const m=DataSafety.model(window.roomReconcileReport,dsStatus,DB,dsPhase);
+  document.getElementById('dataSafety').dataset.state=m.state;
+  document.getElementById('dsHead').textContent=m.headline;
+  document.getElementById('dsMeta').textContent=m.state==='checking'||m.state==='failed'?'':
+    `Telefonda ${m.totals.phone} not · Room’da ${m.totals.roomActive} etkin, ${m.totals.roomDeleted} silinmiş kayıt. `+
+    (m.preview?'Son kontrol önizlemeydi; hiçbir şey değiştirilmedi':'Açılışta otomatik kontrol edildi')+
+    (dsCheckedAt?' ('+dsCheckedAt.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'})+').':'.');
+  const days=(dsStatus&&dsStatus.retentionDays)||30;
+  const counts=[[m.counts.repaired,`Otomatik onarılan (son ${days} gün)`],[m.counts.review,'İnceleme bekleyen'],[m.counts.uncertain,'Kökeni belirsiz']];
+  if(m.counts.repairable)counts.push([m.counts.repairable,'Kanıtla onarılabilir']);
+  if(m.counts.lost)counts.push([m.counts.lost,'Kaybolan değişiklik']);
+  document.getElementById('dsCounts').innerHTML=m.state==='checking'?'':counts.map(([n,l])=>`<div class="ds-count"><b>${n}</b><span>${esc(l)}</span></div>`).join('');
+  const order={review:0,repairable:1,uncertain:2,info:3};
+  document.getElementById('dsItems').innerHTML=[...m.items].sort((a,b)=>order[a.group]-order[b.group]).map(it=>{
+    const tags=[`<span class="ds-tag">${esc(it.label)}</span>`];
+    if(it.roomNewer)tags.push('<span class="ds-tag warn">Room daha yeni olabilir</span>');
+    if(it.unknownOrigin&&it.kind!=='UNKNOWN_ORIGIN')tags.push('<span class="ds-tag warn">Kökeni belirsiz</span>');
+    if(it.group==='repairable')tags.push('<span class="ds-tag">Kanıtlı onarım</span>');
+    const extra=it.fields.length?' Farklı alanlar: '+it.fields.join(', ')+'.':(it.lostWrites?' '+it.lostWrites+' değişiklik kayboldu.':'');
+    return `<li class="ds-item"><h3>${esc(it.title)} <small>· ${esc(it.city)}</small></h3><div class="ds-tags">${tags.join('')}</div>`+
+      `<p>${esc(it.text+extra)}</p>`+
+      (it.reviewable?`<button type="button" class="bk-btn secondary ds-btn" data-ds-key="${esc(it.key)}" aria-label="${esc('İncele: '+it.title)}">İncele</button>`:'')+'</li>';
+  }).join('');
+  document.getElementById('dsApplyProven').hidden=!m.counts.repairable;
+  const batchOn=document.getElementById('dsBatchToggle').checked;
+  const run=document.getElementById('dsBatchRun');
+  run.textContent=`Düşük riskli farkları uygula (${m.batch.length} not)`;
+  run.disabled=!batchOn||!m.batch.length||m.state==='checking';
+  const badge=document.getElementById('dsBadge');
+  badge.hidden=!m.attention;badge.textContent=m.attention;
+  badge.setAttribute('aria-label',m.attention+' veri güvenliği farkı');
+  const hist=DataSafety.historyView(dsStatus,DB);
+  document.getElementById('dsHistTitle').hidden=!hist.length;
+  document.getElementById('dsHistory').innerHTML=hist.map(h=>`<li><strong>${esc(h.title)}</strong> · ${esc(h.city)}<br>${esc(h.label)} · ${esc(dsTime(h.createdAt))}`+
+    (h.note?`<br>${esc(h.note)}`:'')+
+    (h.undoable?`<br><button type="button" class="bk-btn secondary ds-btn" data-ds-undo="${h.id}" aria-label="${esc('Geri al: '+h.title)}">Geri al</button>`:'')+'</li>').join('');
+}
+
+const dsOv=document.getElementById('dsOv');
+function dsOpenDialog(title,opener){
+  dsOpener=opener||document.activeElement;
+  document.getElementById('dsDlgTitle').textContent=title;
+  document.getElementById('dsDlgBody').innerHTML='';
+  document.getElementById('dsDlgResult').textContent='';
+  const ok=document.getElementById('dsApprove');ok.hidden=true;ok.disabled=true;
+  dsOv.classList.add('open');
+  document.getElementById('dsDlgTitle').focus();
+}
+function dsCloseDialog(){
+  dsOv.classList.remove('open');dsMode=null;dsView=null;
+  // The opener is gone when the list was re-rendered after an approval.
+  if(dsOpener&&document.body.contains(dsOpener))dsOpener.focus();
+  else document.getElementById('dsTitle').focus();
+  dsOpener=null;
+}
+function dsConfirmBox(text){
+  return `<label class="ds-check"><input type="checkbox" id="dsConfirm"> <span>${esc(text)}</span></label>`;
+}
+function dsSyncApprove(){
+  const ok=document.getElementById('dsApprove');
+  const box=document.getElementById('dsConfirm');
+  if(!dsMode){ok.disabled=true;return;}
+  if(dsMode.type==='plan')ok.disabled=dsMode.busy||!DataSafety.canApprove(dsView,!!(box&&box.checked));
+  else ok.disabled=dsMode.busy||!(box&&box.checked);
+}
+function dsShowPlan(plan,message){
+  const v=DataSafety.planView(plan,DB);
+  dsView=v;dsMode={type:'plan',key:plan.key,busy:false};
+  document.getElementById('dsDlgTitle').textContent=v.title+' · '+v.city;
+  const rows=v.rows.map(r=>`<div class="ds-row"><h4>${esc(r.label)}</h4><div class="ds-cells"><div><em>Telefonda (korunur)</em>${esc(r.phone)}</div><div><em>Room’da</em>${esc(r.room)}</div></div></div>`).join('');
+  document.getElementById('dsDlgBody').innerHTML=
+    `<p><span class="ds-tag">${esc(v.kindLabel)}</span></p><p>${esc(v.text)}</p>`+
+    (v.warning?`<p class="ds-warn">${esc(v.warning)}</p>`:'')+
+    `<p class="ds-key"><strong>Korunacak kaynak:</strong> ${esc(v.keep)}</p>`+
+    `<p class="ds-key"><strong>İşlemin sonucu:</strong> ${esc(v.result)}</p>`+
+    (v.blocked?`<p class="ds-warn">${esc(v.blocked)}</p>`:'')+
+    (rows?`<div class="ds-cmp" aria-label="Karşılaştırma">${rows}</div>`:'')+
+    (v.enabled&&v.needsConfirmation?dsConfirmBox(v.confirm):'');
+  document.getElementById('dsDlgResult').textContent=message||'';
+  const ok=document.getElementById('dsApprove');
+  ok.textContent=v.button;ok.hidden=!v.action;
+  const box=document.getElementById('dsConfirm');
+  if(box)box.addEventListener('change',dsSyncApprove);
+  dsSyncApprove();
+}
+async function dsOpenItem(key,opener){
+  dsOpenDialog('Fark yükleniyor…',opener);
+  try{dsShowPlan(await dsCall('inspectRoomNote',[JSON.stringify(DB),key]));}
+  catch(e){console.info('[DataSafety] inspect failed: '+e.message);document.getElementById('dsDlgResult').textContent='Fark yüklenemedi. Hiçbir şey değişmedi.';}
+}
+function dsOpenUndo(id,opener){
+  const h=DataSafety.historyView(dsStatus,DB).find(x=>String(x.id)===String(id));
+  if(!h)return;
+  dsOpenDialog('Geri al: '+h.title,opener);
+  dsMode={type:'undo',id:h.id,busy:false};
+  document.getElementById('dsDlgBody').innerHTML=`<p>${esc(h.label)} (${esc(dsTime(h.createdAt))}).</p>`+
+    '<p class="ds-key"><strong>İşlemin sonucu:</strong> Room kaydı bu işlemden önceki hâline döner. Telefondaki notlarınız değişmez.</p>'+
+    dsConfirmBox('Room kaydının işlemden önceki hâline döneceğini anladım.');
+  const ok=document.getElementById('dsApprove');ok.textContent='Geri al';ok.hidden=false;
+  document.getElementById('dsConfirm').addEventListener('change',dsSyncApprove);
+  dsSyncApprove();
+}
+function dsOpenBatch(opener){
+  const keys=DataSafety.model(window.roomReconcileReport,dsStatus,DB,dsPhase).batch;
+  if(!document.getElementById('dsBatchToggle').checked||!keys.length)return;
+  dsOpenDialog('Toplu işlem: '+keys.length+' not',opener);
+  dsMode={type:'batch',keys,busy:false};
+  document.getElementById('dsDlgBody').innerHTML=
+    `<p>${keys.length} not için Room kopyası telefondaki notla eşitlenecek: eksik kopyalar eklenir, kökeni belirsiz ama aynı olan kayıtlar doğrulanır.</p>`+
+    '<p class="ds-key"><strong>Korunacak kaynak:</strong> Telefondaki notlarınız (ana kayıt) değişmez.</p>'+
+    '<p class="ds-key"><strong>İşlemin sonucu:</strong> Hiçbir kaydın üzerine yazılmaz. Her not ayrı ayrı yeniden kontrol edilir ve yedeklenir; durumu değişen not atlanır.</p>'+
+    dsConfirmBox(keys.length+' notun Room kopyasının bu şekilde güncelleneceğini anladım.');
+  const ok=document.getElementById('dsApprove');ok.textContent='Toplu işlemi uygula';ok.hidden=false;
+  document.getElementById('dsConfirm').addEventListener('change',dsSyncApprove);
+  dsSyncApprove();
+}
+async function dsApprove(){
+  if(!dsMode||dsMode.busy)return;
+  const mode=dsMode,result=document.getElementById('dsDlgResult');
+  const box=document.getElementById('dsConfirm');
+  mode.busy=true;dsSyncApprove();
+  try{
+    if(mode.type==='plan'){
+      if(!DataSafety.canApprove(dsView,!!(box&&box.checked)))return;
+      result.textContent='Uygulanıyor…';
+      const out=await dsCall('applyRoomResolution',[JSON.stringify(DB),mode.key,dsView.action,dsView.token,!!(box&&box.checked)]);
+      console.info('[DataSafety] resolution '+out.code);
+      if(out.plan&&out.code!=='APPLIED'&&out.plan.kind){dsShowPlan(out.plan,DataSafety.outcomeText(out.code));}
+      else{
+        document.getElementById('dsDlgBody').innerHTML='';
+        document.getElementById('dsApprove').hidden=true;
+        result.textContent=DataSafety.outcomeText(out.code)+(out.undoable?' İşlemi “Son işlemler” bölümünden geri alabilirsiniz.':'');
+      }
+    }else if(mode.type==='undo'){
+      if(!(box&&box.checked))return;
+      result.textContent='Geri alınıyor…';
+      const out=await dsCall('undoRoomResolution',[String(mode.id)]);
+      console.info('[DataSafety] undo '+out.code);
+      document.getElementById('dsDlgBody').innerHTML='';
+      document.getElementById('dsApprove').hidden=true;
+      result.textContent=DataSafety.outcomeText(out.code);
+    }else if(mode.type==='batch'){
+      if(!(box&&box.checked))return;
+      let applied=0,skipped=0;
+      for(const key of mode.keys){
+        result.textContent=`İşleniyor… (${applied+skipped+1}/${mode.keys.length})`;
+        try{
+          const plan=await dsCall('inspectRoomNote',[JSON.stringify(DB),key]);
+          const v=DataSafety.planView(plan,DB);
+          const low=plan.kind==='MISSING_IN_ROOM'||plan.kind==='UNKNOWN_ORIGIN';
+          if(!low||!DataSafety.canApprove(v,false)){skipped++;continue;}
+          const out=await dsCall('applyRoomResolution',[JSON.stringify(DB),key,v.action,v.token,false]);
+          if(out.code==='APPLIED')applied++;else skipped++;
+        }catch(e){skipped++;}
+      }
+      console.info('[DataSafety] batch applied='+applied+' skipped='+skipped);
+      document.getElementById('dsDlgBody').innerHTML='';
+      document.getElementById('dsApprove').hidden=true;
+      result.textContent=`${applied} not uygulandı, ${skipped} not atlandı. Telefondaki notlarınız değişmedi.`;
+    }
+    dsRecheck();
+  }catch(e){
+    console.info('[DataSafety] action failed: '+e.message);
+    result.textContent='İşlem tamamlanamadı. Değişiklik ya tamamen uygulandı ya da hiç uygulanmadı; durum yeniden kontrol ediliyor.';
+    dsRecheck();
+  }finally{
+    mode.busy=false;if(dsMode===mode)dsSyncApprove();
+  }
+}
+document.getElementById('dsApprove').onclick=dsApprove;
+document.getElementById('dsClose').onclick=dsCloseDialog;
+dsOv.addEventListener('click',e=>{if(e.target===dsOv)dsCloseDialog();});
+document.getElementById('dsCheck').onclick=dsRecheck;
+document.getElementById('dsApplyProven').onclick=()=>{dsPhase='checking';dsRender();requestRoomReconcile(true);};
+document.getElementById('dsBatchToggle').onchange=dsRender;
+document.getElementById('dsBatchRun').onclick=e=>dsOpenBatch(e.currentTarget);
+document.getElementById('dataSafety').addEventListener('click',e=>{
+  const item=e.target.closest('[data-ds-key]');
+  if(item){dsOpenItem(item.dataset.dsKey,item);return;}
+  const undo=e.target.closest('[data-ds-undo]');
+  if(undo)dsOpenUndo(undo.dataset.dsUndo,undo);
+});
+dsRender();
 
 // Room shadow-write pilot: localStorage remains the authoritative source until
 // startup hydration, delete and edit flows have passed Android device tests.

@@ -46,4 +46,19 @@ class RoomBridgeScriptsTest {
             RoomBridgeScripts.reconcileResult("r-2", null, "SQLiteFullException")
         )
     }
+
+    @Test
+    fun dataSafetyResultsOnlyReachKnownCallbacks() {
+        assertEquals(
+            "window.onRoomInspectResult && window.onRoomInspectResult(\"ds-1\",{\"kind\":null},null);",
+            RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.INSPECT_RESULT, "ds-1", org.json.JSONObject().put("kind", org.json.JSONObject.NULL), null)
+        )
+        assertEquals(
+            "window.onDataSafetyStatus && window.onDataSafetyStatus(\"ds-\\\"2\",null,\"Room unavailable\");",
+            RoomBridgeScripts.dataSafetyResult(RoomBridgeScripts.SAFETY_STATUS, "ds-\"2", null, "Room unavailable")
+        )
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            RoomBridgeScripts.dataSafetyResult("alert", "ds-3", null, null)
+        }
+    }
 }

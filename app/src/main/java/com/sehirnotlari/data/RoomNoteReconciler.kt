@@ -119,18 +119,12 @@ class RoomNoteReconciler(
     private val store: NoteReconcileStore,
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
-    private data class LegacyNote(val city: String, val draft: RoomNoteDraft) {
-        val fingerprint = NoteFingerprint.of(draft)
-    }
-
-    private class Legacy(val notes: Map<String, LegacyNote>, val skipped: Int)
-
     /**
      * Caller holds the sequencer's mutex inside one database transaction (see [reconcileWithLegacy]).
      * [cutoff] is a ticket taken when the localStorage copy was made; later writes are not compared.
      */
     suspend fun run(legacyJson: String, apply: Boolean, cutoff: Long = Long.MAX_VALUE): ReconcileReport {
-        val legacy = parseLegacy(legacyJson)
+        val legacy = LegacyNotes.parse(legacyJson)
         val allRows = store.allNotes()
         val rows = allRows.filter { it.writeTicket < cutoff }.associateBy { it.id }
         val changedSince = allRows.filter { it.writeTicket >= cutoff }.map { it.id }.toSet()
@@ -181,7 +175,7 @@ class RoomNoteReconciler(
                 val rest = live.filter { it !== anchor }
                 val (older, newer) = rest.partition { anchor != null && it.ticket < anchor.ticket }
                 if (repaired) {
-                    if (apply) store.resolveJournal(anchor!!.ticket, NoteWriteJournalEntry.REPAIRED, now, replaced?.let(::rowJson))
+                    if (apply) store.resolveJournal(anchor!!.ticket, NoteWriteJournalEntry.REPAIRED, now, replaced?.let(NoteRowJson::encode))
                 } else if (anchor != null) {
                     resolve(listOf(anchor), NoteWriteJournalEntry.SUPERSEDED)
                     superseded++
@@ -256,55 +250,6 @@ class RoomNoteReconciler(
             items = items,
         )
     }
-
-    private fun parseLegacy(json: String): Legacy {
-        val cities = try {
-            JSONObject(json)
-        } catch (_: Exception) {
-            throw RoomBridgeFailure("Invalid legacy notes payload")
-        }
-        val notes = linkedMapOf<String, LegacyNote>()
-        var skipped = 0
-        val keys = cities.keys()
-        while (keys.hasNext()) {
-            val city = keys.next()
-            val array = cities.optJSONArray(city)
-            if (array == null) {
-                skipped++
-                continue
-            }
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i)
-                val id = item?.let { RoomNoteKeys.idFromJson(it.opt("id")) }
-                val key = id?.let { RoomNoteKeys.key(city, it) }
-                // The WebView acts on the first note with an id, so a later duplicate is skipped too.
-                if (item == null || key == null || key in notes) {
-                    skipped++
-                    continue
-                }
-                notes[key] = LegacyNote(city, RoomNoteDraft.fromJson(item))
-            }
-        }
-        return Legacy(notes, skipped)
-    }
-
-    private fun rowJson(note: NoteEntity): String = JSONObject().apply {
-        put("id", note.id)
-        put("city", note.city)
-        put("title", note.title)
-        put("content", note.content)
-        put("category", note.category)
-        put("star", note.star)
-        put("color", note.color)
-        put("favorite", note.favorite)
-        put("isAI", note.isAI ?: JSONObject.NULL)
-        put("dateLabel", note.dateLabel)
-        put("createdAt", note.createdAt)
-        put("writeTicket", note.writeTicket)
-        put("modifiedAt", note.modifiedAt ?: JSONObject.NULL)
-        put("deletedAt", note.deletedAt ?: JSONObject.NULL)
-        put("syncState", note.syncState)
-    }.toString()
 
     companion object {
         const val JOURNAL_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
