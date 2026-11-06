@@ -265,3 +265,94 @@ Mevcut testler yeni alan adlarına uyarlandı (`writeTicket`, `maxWriteTicket`, 
 5. **`createdAt`** notun WebView'da oluşturulma zamanı değil, Room'a ilk yazılma zamanıdır.
 6. **Eski not aktarımında `isAI`:** localStorage'da alan yoksa `false` yazılır. Bu, arayüzün o notu gösterdiği şekille aynıdır.
 7. Önceki riskler sürüyor: Activity yeniden oluşursa köprü sonucu kaybolur; cihazlar arası kimlik çakışması çok düşük olasılıkla mümkündür; Room ana kaynak değildir.
+
+## P5 — Android cihaz doğrulaması (6 Kasım 2026)
+
+Başlangıç: `5f588d82c85bb7ac1727df2adf17e9f8b92a9086`. Push/merge yok. `main` değişmedi. Otomatik Room aktarımı kapalı kaldı (oturum boyunca `import` kaydı 0). Room ana kaynak yapılmadı. Yıkıcı migration yok. Gerçek kullanıcı verisine dokunulmadı: bütün testler yeni oluşturulan, yalnız test notları içeren bir emülatörde yapıldı.
+
+### Ortam
+| Öğe | Durum |
+| :--- | :--- |
+| Ana makine | Windows 10 19045, i7-6700HQ, 15,9 GB RAM; hızlandırma: WHPX “installed and usable” (`emulator -accel-check`) |
+| SDK | `platform-tools` (adb 37.0.0), `emulator` 36.6.11, platformlar 35/36/36.1/37.0 |
+| Eksik | `cmdline-tools` (dolayısıyla `avdmanager`/`sdkmanager`) kurulu değil; başlangıçta hiç AVD yoktu, `adb devices` boştu |
+| AVD | `SehirNotlari_P5_Test`: kurulu sistem imajından (`android-37.0/google_apis_playstore_ps16k/x86_64`, rev 6) Android Studio'nun yazdığı `config.ini` biçimiyle elle oluşturuldu; yeni indirme yapılmadı. 4 çekirdek, 3 GB RAM, 1080×2400, 420 dpi |
+| Cihaz | `sdk_gphone16k_x86_64`, Android 17 (API 37), yapı `CE2A.260420.019`, 16 KB sayfa; WebView/Chrome 145.0.7632.218 |
+
+### Test ortamı için yapılan ayarlar (kaynak koda girmeyen)
+- **Sürüm numarası:** İlk kurulumda uygulama içi güncelleyici gerçek `v1.2` sürümünü indirmeye başladı. Kurulum ve izin ekranları döndürme testlerini bozacağı için test uygulaması, henüz veri yokken kaldırıldı. Test APK'ları geçici kopyalarda `versionName` 98.0 (v1) ve 99.0 (v2) ile derlendi. Güncelleyici “Up to date” diyerek durdu. AGP 9 `android.injected.version.*` parametresini dikkate almadı.
+- **Ekran klavyesi:** Gboard düzeni kaydırıp dokunuşları bozdu; emülatörde devre dışı bırakıldı. Yeniden kurulumdan sonra sistem Gboard'u tekrar açtığı için v2 aşamasında metin alanları DevTools ile dolduruldu. **Not Ekle, yıldız, Düzenle/Kaydet, Favori ve Sil işlemleri gerçek `adb input tap` dokunuşlarıyla yapıldı.**
+- **Döndürme:** `wm user-rotation lock 1/0`.
+- Cihazda çalışan v2 APK'sının `app/src/main` ağacı bu commit'le birebir aynı (dosya özetleriyle karşılaştırıldı); tek fark geçici kopyadaki sürüm numarası.
+
+### Doğrulama için eklenen kod (bu commit)
+- `MainActivity`: Room köprüsü sonuçları `SehirNotlariRoom` etiketiyle Logcat'e yazılır: `upsert/delete request=… ticket=… ack=…`, `read ok active=N`, `import ok …`, hatalar. Not içeriği loglanmaz. WebView uzaktan hata ayıklaması yalnız `FLAG_DEBUGGABLE` derlemelerde açılır.
+- `index.html`: `[RoomBridge] write ok / delete ok` konsol satırları; artık beklenmeyen istek için geri bildirim; karşılaştırma satırı okunur metin (`legacy=… room=… onlyLegacy=… onlyRoom=…`). Konsol satırları Logcat'te `chromium … CONSOLE` olarak görünür.
+- `RoomMigrationGuardTest` +1: `setWebContentsDebuggingEnabled(true)` yalnız debuggable kontrolü içinde ve tek yerde.
+
+### v1 → v2 yükseltmesi (cihazda)
+1. `c8d65b7` (Room v1) test APK'sı kuruldu. Ankara'ya gerçek dokunuşlarla üç not eklendi; A favorilere alındı, C silindi.
+2. Cihazdan çekilen v1 veritabanı: `user_version 1`, kimlik `d453335e…`, `integrity ok`, sütunlar `updatedAt` dahil v1. Satırlar: A (favori), B, C (tombstone, `deletedAt` = `updatedAt`).
+3. v2 test APK'sı `adb install -r` ile **verileri silmeden** üstüne kuruldu ve açıldı.
+
+| Kontrol | Sonuç |
+| :--- | :--- |
+| Logcat | `read ok active=2`; `[RoomBridge] comparison legacy=2 room=2 onlyLegacy=0 onlyRoom=0`; çökme yok |
+| `PRAGMA user_version` / kimlik | 2 / `b64828285a91f1f93115230ff973b648` |
+| `integrity_check` | ok |
+| Sütunlar / indeksler | v2 düzeni; `index_notes_city`, `index_notes_writeTicket`; `updatedAt` ve `notes_v2` artığı yok |
+| Satırlar | 3/3 korundu; kimlikler aynı; `writeTicket` = eski `updatedAt` (birebir); `modifiedAt` ve `isAI` `NULL` |
+| Tombstone | C korunuyor; `deletedAt` değişmedi |
+| `localStorage` (`tur_v10`) | A (favori) ve B, sayısal kimliklerle aynen duruyor |
+
+### v2 işlevleri (gerçek dokunuşlarla)
+| Adım | Logcat (native → WebView) | Room |
+| :--- | :--- | :--- |
+| Not oluştur (D, 4 yıldız) | `upsert … ack=Applied` → `[RoomBridge] write ok` (aynı istek kimliği) | yeni satır, `isAI=0`, `modifiedAt` dolu |
+| Düzenle ve Kaydet | `upsert … Applied` → `write ok` | başlık ve içerik güncellendi |
+| Favori | `upsert … Applied` → `write ok` | `favorite=1` |
+| Sil | `delete … Applied` → `delete ok` | tombstone: `deletedAt = modifiedAt` duvar saati, `writeTicket` silme bileti; düzenlenmiş başlık ve favori korunur |
+| v1'den gelen B'yi favorile | `upsert … Applied` | migration satırı güncellendi: `isAI=0`, `modifiedAt` doldu, yeni bilet; `createdAt` korundu |
+
+### Yaşam döngüsü ve yük senaryoları
+| Senaryo | Sonuç |
+| :--- | :--- |
+| Favoriye dokun ve hemen döndür | Yazma `Applied` ve `write ok`; Activity iki kez yeniden oluştu (`relaunch`); yeni sayfada `legacy=2 room=2` |
+| Yataya kilitle (2400×1080) | Activity yeniden oluştu; `legacy=2 room=2`; döndürmeden önceki favori korunmuş |
+| Yatayda E notunu ekle ve hemen dikeye döndür | `Applied` ve `write ok`; yeni Activity'de `legacy=3 room=3` |
+| Zorla durdur ve soğuk başlat | Yeni süreç; `read ok active=3`; `legacy=3 room=3` |
+| Geri tuşu, “Evet” ile çıkış, yeniden aç | `legacy=13 room=13`; alan alan karşılaştırmada fark yok |
+| 7 hızlı favori dokunuşu (tek komut) | 7 ayrı `upsert`, biletler kesin artan, hepsi `Applied`; son durum iki tarafta aynı |
+| Art arda 10 not ekleme (gerçek `Not Ekle` işleyicisi) ve aynı note 9 favori değişimi | 19/19 `Applied` ve 19/19 `write ok`; `IgnoredStale`, `Rejected` veya hata 0; 10 kimlik benzersiz ve güvenli tam sayı |
+| Aynı milisaniyede 5000 kimlik (`NoteIds.nextNoteId`, Chrome 145) | çakışma 0 |
+
+10 eklemenin tıklamaları her seferinde yeniden çizim yaptığı için 190 ms'ye yayıldı. Aynı milisaniye koşulu, kimlik üreticisinin gerçek WebView motorunda doğrudan çağrılmasıyla ayrıca sınandı.
+
+**Son tam karşılaştırma** (cihazdan çekilen veritabanı ve DevTools ile okunan `tur_v10`): `localStorage` 13 not; Room 13 etkin ve 2 tombstone (v1'den C, v2'den D); yalnız Room'da bulunan etkin not yok. Başlık, içerik, kategori, yıldız, renk, favori ve tarih alanlarında **fark yok**. Veritabanı `integrity ok`.
+
+### Hata bildirimleri (Logcat)
+Test için köprü doğrudan çağrıldı; `localStorage` değişmedi (`before === after`).
+- Silinmiş D'yi diriltme denemesi: `upsert request=p5-reject-test … ack=Rejected(message=Deleted note cannot be restored by a stale write)` → WebView `Room pilot write failed: Deleted note cannot be restored…`. D tombstone'u değişmedi.
+- Bozuk JSON: `E/SehirNotlariRoom upsert failed request=p5-bad-json` ve `JSONException` → WebView `Room pilot write failed: Expected ':' …`.
+- Kilitlenme kaydında `com.sehirnotlari` yok. Dropbox ANR/çökme kayıtları yalnız açılış sırasındaki Google sistem uygulamalarına ait (Play Store, GMS, Android System Intelligence).
+
+### Derleme ve test
+| Komut | Sonuç |
+| :--- | :--- |
+| `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest --rerun-tasks` | **BUILD SUCCESSFUL** (1m 10s). 67 test, 0 başarısız, 0 atlanan. |
+
+### Yapılamayan veya sonuçsuz kalanlar
+1. **Yazma sürerken süreç ölümü:** Favori dokunuşu ve `am force-stop` aynı komutta verildi. Süreç dokunuş JS'e ulaşmadan öldü; iki tarafta da değişiklik olmadı. Room yazması 10–20 ms sürdüğü için bu durum `adb` ile güvenilir biçimde üretilemedi. Bu yolda `localStorage` önce yazıldığından, olursa Room'da eksik veya eski bir gölge kalır (aşağıdaki risk 1).
+2. **Kaybolan geri bildirim:** Döndürme sırasındaki yazmalar Activity yenilenmeden bittiği için “unknown request” satırı görülmedi; yol kodda var, cihazda tetiklenmedi.
+3. **Gerçek fiziksel cihaz** kullanılmadı; yalnız emülatör (API 37). Daha eski Android sürümleri (minSdk 24'e kadar) ve farklı WebView sürümleri denenmedi.
+4. **Yapay zekâ notu** (`isAI=true`) cihazda oluşturulmadı (Gemini çağrısı gerektirir). `isAI` yazımı birim testlerinde doğrulandı; cihazda elle notların `isAI=0` yazıldığı görüldü.
+5. JSON dosyasından içe aktarma ve buluttan geri yükleme cihazda denenmedi.
+
+### Kalan riskler
+1. **Süreç ölümünde gölge sapması:** `localStorage` eşzamanlı yazılır, Room yazması süreç içi kuyruktadır. Süreç tam bu aralıkta ölürse Room eski kalır. Uygulamanın kendisi Room'u yeniden eşitlemez; açılıştaki karşılaştırma yalnız kimlik kümelerini sayar, alan farklarını göstermez.
+2. **Hata kaydında içerik:** Bozuk JSON durumunda `org.json` istisna mesajı girdinin bir kısmını içerir ve bu Logcat'e düşebilir (bu davranış P5'ten önce de vardı).
+3. Önceki riskler sürüyor: geri dönüş yok (v2 → v1 APK'sı Room'u açamaz); v1 satırlarında `isAI` ve `modifiedAt` boş kalır; `createdAt` Room'a ilk yazılma zamanıdır; Room ana kaynak değil.
+
+### Gereken ortam (eksikleri tamamlamak için)
+- Fiziksel bir Android cihaz (USB hata ayıklama açık) veya daha eski API'li (ör. API 24/26/30) ek AVD'ler; bunun için Android Studio SDK Manager'dan ilgili sistem imajları ve isteğe bağlı olarak `cmdline-tools`.
+- Yapay zekâ notu için geçerli Gemini anahtarı ve ağ (yerelde mevcut, ama test kapsamına alınmadı).

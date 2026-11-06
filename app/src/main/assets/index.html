@@ -958,10 +958,8 @@ window.onRoomNotesReady=function(snapshot){
     Array.isArray(notes)?notes.map(note=>city+'::'+String(note.id)):[]));
   const onlyLegacy=[...legacyKeys].filter(key=>!roomKeys.has(key));
   const onlyRoom=[...roomKeys].filter(key=>!legacyKeys.has(key));
-  console.info('Room pilot comparison',{
-    legacyCount:legacyKeys.size,roomCount:roomKeys.size,
-    onlyLegacyCount:onlyLegacy.length,onlyRoomCount:onlyRoom.length
-  });
+  console.info('[RoomBridge] comparison legacy='+legacyKeys.size+' room='+roomKeys.size+
+    ' onlyLegacy='+onlyLegacy.length+' onlyRoom='+onlyRoom.length);
   // No automatic reconciliation: deleted legacy notes could otherwise reappear.
   const count=Object.values(snapshot).reduce((n,notes)=>n+(Array.isArray(notes)?notes.length:0),0);
   console.info('Room pilot snapshot loaded:',count,'notes; legacy storage unchanged');
@@ -981,9 +979,10 @@ window.addEventListener('load',requestRoomPilotSnapshot);
 // startup hydration, delete and edit flows have passed Android device tests.
 const roomPilotPending=new Map();
 window.onRoomWriteResult=function(requestId,ok,error){
-  if(!roomPilotPending.has(requestId))return;
+  if(!roomPilotPending.has(requestId)){console.info('[RoomBridge] write result for unknown request '+requestId+' ok='+ok);return;}
   roomPilotPending.delete(requestId);
   if(!ok){console.error('Room pilot write failed:',error);toast('⚠️ Yerel not kaydedildi; Room kaydı başarısız');}
+  else console.info('[RoomBridge] write ok '+requestId);
 };
 function mirrorNewNoteToRoom(city,note){
   if(!(window.Android&&typeof window.Android.upsertRoomNote==='function'))return;
@@ -1011,9 +1010,10 @@ document.getElementById('ba').onclick=()=>{
 };
 const roomDeletePending=new Set();
 window.onRoomDeleteResult=function(requestId,ok,error){
-  if(!roomDeletePending.has(requestId))return;
+  if(!roomDeletePending.has(requestId)){console.info('[RoomBridge] delete result for unknown request '+requestId+' ok='+ok);return;}
   roomDeletePending.delete(requestId);
   if(!ok){console.error('Room shadow-delete failed:',error);toast('⚠️ Yerel not silindi; Room silme işlemi başarısız');}
+  else console.info('[RoomBridge] delete ok '+requestId);
 };
 function mirrorDeletedNoteToRoom(city,id){
   if(!(window.Android&&typeof window.Android.deleteRoomNote==='function'))return;

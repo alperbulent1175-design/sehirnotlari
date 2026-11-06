@@ -42,6 +42,16 @@ class RoomMigrationGuardTest {
     }
 
     @Test
+    fun webViewDebuggingIsLimitedToDebuggableBuilds() {
+        val source = sourceFile("src/main/java/com/sehirnotlari/MainActivity.kt").readText()
+        val guarded = Regex(
+            """if \(applicationInfo\.flags and ApplicationInfo\.FLAG_DEBUGGABLE != 0\) \{\s*WebView\.setWebContentsDebuggingEnabled\(true\)\s*}"""
+        )
+        assertTrue(guarded.containsMatchIn(source))
+        assertTrue(Regex("""setWebContentsDebuggingEnabled""").findAll(source).count() == 1)
+    }
+
+    @Test
     fun webViewCreatesNotesThroughCollisionSafeIds() {
         val html = sourceFile("src/main/assets/index.html").readText()
         assertTrue(html.contains("<script src=\"note-ids.js\"></script>"))

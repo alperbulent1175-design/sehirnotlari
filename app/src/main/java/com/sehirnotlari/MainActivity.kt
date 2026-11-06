@@ -20,6 +20,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -55,6 +56,8 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.TimeZone
+
+private const val ROOM_LOG = "SehirNotlariRoom"
 
 class MainActivity : AppCompatActivity() {
 
@@ -238,6 +241,9 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -324,9 +330,10 @@ class MainActivity : AppCompatActivity() {
                             skipped = outcome.skipped
                         }
                     }
+                    Log.i(ROOM_LOG, "import ok inserted=$inserted skipped=$skipped")
                     postRoomResult(RoomBridgeScripts.importResult(true, inserted, skipped, null))
                 } catch (e: Exception) {
-                    Log.e("SehirNotlari", "Room import failed", e)
+                    Log.e(ROOM_LOG, "import failed", e)
                     postRoomResult(RoomBridgeScripts.importResult(false, 0, 0, e.message ?: "Room import failed"))
                 }
             }
@@ -340,16 +347,17 @@ class MainActivity : AppCompatActivity() {
             val ticket = try {
                 sequencer.nextTicket()
             } catch (e: Exception) {
-                Log.e("SehirNotlari", "Room open failed", e)
+                Log.e(ROOM_LOG, "open failed request=$requestId", e)
                 postRoomResult(RoomBridgeScripts.deleteResult(requestId, false, e.message ?: "Room open failed"))
                 return
             }
             RoomNoteWriteSequencer.writeScope.launch {
                 try {
                     val ack = sequencer.delete(city, id, ticket, requestId)
+                    Log.i(ROOM_LOG, "delete request=$requestId ticket=$ticket ack=$ack")
                     postRoomResult(RoomBridgeScripts.deleteResult(requestId, ack.toBridgeSuccess(), ack.toBridgeError()))
                 } catch (e: Exception) {
-                    Log.e("SehirNotlari", "Room delete failed", e)
+                    Log.e(ROOM_LOG, "delete failed request=$requestId", e)
                     postRoomResult(RoomBridgeScripts.deleteResult(requestId, false, e.message ?: "Room delete failed"))
                 }
             }
@@ -364,7 +372,7 @@ class MainActivity : AppCompatActivity() {
             val ticket = try {
                 sequencer.nextTicket()
             } catch (e: Exception) {
-                Log.e("SehirNotlari", "Room open failed", e)
+                Log.e(ROOM_LOG, "open failed request=$requestId", e)
                 postRoomResult(RoomBridgeScripts.writeResult(requestId, false, e.message ?: "Room open failed"))
                 return
             }
@@ -389,9 +397,10 @@ class MainActivity : AppCompatActivity() {
                         ticket,
                         requestId.takeIf { it.isNotBlank() }
                     )
+                    Log.i(ROOM_LOG, "upsert request=$requestId ticket=$ticket ack=$ack")
                     postRoomResult(RoomBridgeScripts.writeResult(requestId, ack.toBridgeSuccess(), ack.toBridgeError()))
                 } catch (e: Exception) {
-                    Log.e("SehirNotlari", "Room note upsert failed", e)
+                    Log.e(ROOM_LOG, "upsert failed request=$requestId", e)
                     postRoomResult(RoomBridgeScripts.writeResult(requestId, false, e.message ?: "Room write failed"))
                 }
             }
@@ -402,7 +411,9 @@ class MainActivity : AppCompatActivity() {
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val result = JSONObject()
-                    notesDatabase.notes().allActive().forEach { note ->
+                    val active = notesDatabase.notes().allActive()
+                    Log.i(ROOM_LOG, "read ok active=${active.size}")
+                    active.forEach { note ->
                         val arr = result.optJSONArray(note.city) ?: JSONArray().also { result.put(note.city, it) }
                         arr.put(JSONObject().apply {
                             put("id", RoomNoteKeys.webViewId(note))
@@ -420,7 +431,7 @@ class MainActivity : AppCompatActivity() {
                         webView.evaluateJavascript("window.onRoomNotesReady && window.onRoomNotesReady(${result});", null)
                     }
                 } catch (e: Exception) {
-                    Log.e("SehirNotlari", "Room read failed", e)
+                    Log.e(ROOM_LOG, "read failed", e)
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
                             RoomBridgeScripts.notesError(e.message ?: "Room read failed"),
