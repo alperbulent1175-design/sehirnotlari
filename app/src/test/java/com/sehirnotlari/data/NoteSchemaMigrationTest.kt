@@ -134,19 +134,20 @@ class NoteSchemaMigrationTest {
     }
 
     @Test
-    fun migratedFileHasV2LayoutAndIdentity() {
+    fun migratedFileHasCurrentLayoutAndIdentity() {
         createV1Database(v1Rows)
         val sqlite = openMigrated().openHelper.writableDatabase
-        sqlite.query("PRAGMA user_version").use { it.moveToFirst(); assertEquals(2, it.getInt(0)) }
+        sqlite.query("PRAGMA user_version").use { it.moveToFirst(); assertEquals(3, it.getInt(0)) }
         sqlite.query("SELECT identity_hash FROM room_master_table WHERE id = 42").use {
             it.moveToFirst()
-            assertEquals(RoomSchemaFiles.database(2).getString("identityHash"), it.getString(0))
+            assertEquals(RoomSchemaFiles.database(3).getString("identityHash"), it.getString(0))
         }
         val columns = mutableListOf<String>()
         sqlite.query("PRAGMA table_info(`notes`)").use { c ->
             while (c.moveToNext()) columns += c.getString(c.getColumnIndexOrThrow("name"))
         }
-        assertEquals(RoomSchemaFiles.columns(2), columns)
+        assertEquals(RoomSchemaFiles.columns(3), columns)
+        sqlite.query("SELECT COUNT(*) FROM note_write_journal").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
         val indices = mutableSetOf<String>()
         sqlite.query("PRAGMA index_list(`notes`)").use { c ->
             while (c.moveToNext()) indices += c.getString(c.getColumnIndexOrThrow("name"))
@@ -169,7 +170,7 @@ class NoteSchemaMigrationTest {
             }
         }
         val db = Room.databaseBuilder(context, CityNotesDatabase::class.java, name)
-            .addMigrations(broken)
+            .addMigrations(broken, NoteSchemaMigrations.MIGRATION_2_3)
             .allowMainThreadQueries()
             .build()
         try {
@@ -193,6 +194,37 @@ class NoteSchemaMigrationTest {
     }
 
     @Test
+    fun v2DatabaseMigratesToV3KeepingEveryRowAndAddingAnEmptyJournal() = runBlocking {
+        val file = context.getDatabasePath(name)
+        file.parentFile?.mkdirs()
+        val v2Rows = v1Rows.map(::expected) + NoteEntity(
+            id = "Bursa::1762380000000777", city = "Bursa", title = "v2 yazımı", isAI = true,
+            createdAt = 1_762_380_000_100L, writeTicket = 1_762_380_000_200L, modifiedAt = 1_762_380_000_150L
+        )
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            RoomSchemaFiles.createStatements(2).forEach(db::execSQL)
+            v2Rows.forEach { row ->
+                db.insertOrThrow("notes", null, ContentValues().apply {
+                    put("id", row.id); put("city", row.city); put("title", row.title); put("content", row.content)
+                    put("category", row.category); put("star", row.star); put("color", row.color)
+                    put("favorite", if (row.favorite) 1 else 0)
+                    if (row.isAI == null) putNull("isAI") else put("isAI", if (row.isAI) 1 else 0)
+                    put("dateLabel", row.dateLabel); put("createdAt", row.createdAt); put("writeTicket", row.writeTicket)
+                    if (row.modifiedAt == null) putNull("modifiedAt") else put("modifiedAt", row.modifiedAt)
+                    if (row.deletedAt == null) putNull("deletedAt") else put("deletedAt", row.deletedAt)
+                    put("syncState", row.syncState)
+                })
+            }
+            db.version = 2
+        }
+        val db = openMigrated()
+        v2Rows.forEach { assertEquals(it, db.notes().findAny(it.id)) }
+        assertTrue(db.journal().all().isEmpty())
+        assertNull(db.journal().maxTicket())
+        db.openHelper.writableDatabase.query("PRAGMA user_version").use { it.moveToFirst(); assertEquals(3, it.getInt(0)) }
+    }
+
+    @Test
     fun emptyV1DatabaseMigrates() = runBlocking {
         createV1Database(emptyList())
         val dao = openMigrated().notes()
@@ -201,7 +233,7 @@ class NoteSchemaMigrationTest {
     }
 
     @Test
-    fun freshInstallCreatesV2Directly() = runBlocking {
+    fun freshInstallCreatesCurrentSchemaDirectly() = runBlocking {
         val dao = openMigrated().notes()
         val sequencer = RoomNoteWriteSequencer.forDao(dao)
         sequencer.upsert("Bursa", "1762380000000123", RoomNoteDraft(title = "Yeni", isAI = true), sequencer.nextTicket())

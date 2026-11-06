@@ -20,7 +20,7 @@ class RoomMigrationGuardTest {
         assertFalse(source.contains("fallbackToDestructiveMigration"))
         assertFalse(source.contains("fallbackToDestructiveMigrationOnDowngrade"))
         assertTrue(source.contains("city_notes.db"))
-        assertTrue(source.contains("version = 2, exportSchema = true"))
+        assertTrue(source.contains("version = 3, exportSchema = true"))
         assertTrue(source.contains(".addMigrations(*NoteSchemaMigrations.ALL)"))
     }
 
@@ -28,9 +28,53 @@ class RoomMigrationGuardTest {
     fun everySchemaVersionHasExportedSchemaAndExplicitMigration() {
         val migrations = sourceFile("src/main/java/com/sehirnotlari/data/NoteSchemaMigrations.kt").readText()
         assertTrue(migrations.contains("Migration(1, 2)"))
-        assertTrue(migrations.contains("arrayOf(MIGRATION_1_2)"))
-        assertTrue(sourceFile("schemas/com.sehirnotlari.data.CityNotesDatabase/1.json").isFile)
-        assertTrue(sourceFile("schemas/com.sehirnotlari.data.CityNotesDatabase/2.json").isFile)
+        assertTrue(migrations.contains("Migration(2, 3)"))
+        assertTrue(migrations.contains("arrayOf(MIGRATION_1_2, MIGRATION_2_3)"))
+        (1..3).forEach { assertTrue(sourceFile("schemas/com.sehirnotlari.data.CityNotesDatabase/$it.json").isFile) }
+    }
+
+    @Test
+    fun roomLogsAndBridgeErrorsCarryNoNoteData() {
+        val source = sourceFile("src/main/java/com/sehirnotlari/MainActivity.kt").readText()
+        val roomLogs = source.lines().filter { it.contains("Log.") && it.contains("ROOM_LOG") }
+        assertTrue(roomLogs.size >= 10)
+        roomLogs.forEach { line ->
+            assertFalse("throwable logged: $line", Regex(""",\s*e\)""").containsMatchIn(line))
+            assertFalse("message logged: $line", line.contains("e.message"))
+            listOf("json", "noteJson", "title", "content", "draft", "item").forEach { name ->
+                assertFalse("$name logged: $line", Regex("""\$\{?$name\b""").containsMatchIn(line))
+            }
+        }
+        val bridgeResults = source.lines().filter { it.contains("RoomBridgeScripts.") }
+        bridgeResults.forEach { assertFalse("raw message sent: $it", it.contains("e.message")) }
+    }
+
+    @Test
+    fun appLogsCarryNoKeyMaterialStackTracesOrModelText() {
+        val source = sourceFile("src/main/java/com/sehirnotlari/MainActivity.kt").readText()
+        assertFalse(source.contains("getStackTraceString"))
+        assertFalse(source.contains("keyPrefix"))
+        source.lines().filter { it.contains("Log.") }.forEach { line ->
+            assertFalse("key logged: $line", line.contains("GEMINI_API_KEY"))
+            assertFalse("message logged: $line", line.contains("e.message"))
+            listOf("prompt", "responseText", "aiResponse", "response").forEach { name ->
+                assertFalse("$name logged: $line", Regex("""\$\{?$name\b(?!\.length)""").containsMatchIn(line))
+            }
+        }
+    }
+
+    @Test
+    fun webViewReconcilesReadOnlyAndLogsCountsOnly() {
+        val html = sourceFile("src/main/assets/index.html").readText()
+        assertTrue(html.contains("window.addEventListener('load',()=>requestRoomReconcile(true));"))
+        assertTrue(html.contains("window.Android.reconcileRoomNotes(JSON.stringify(DB),requestId,apply!==false)"))
+        val handler = html.substringAfter("window.onRoomReconcileResult=function").substringBefore("\n};")
+        assertFalse(handler.contains("sv("))
+        assertFalse(handler.contains("localStorage"))
+        assertFalse(handler.contains("DB"))
+        val logs = Regex("""console\.\w+\([^;]*""").findAll(handler).map { it.value }.toList()
+        assertTrue(logs.any { it.contains("report.summary") })
+        logs.forEach { assertFalse("item details logged: $it", it.contains("items") || it.contains("key")) }
     }
 
     @Test

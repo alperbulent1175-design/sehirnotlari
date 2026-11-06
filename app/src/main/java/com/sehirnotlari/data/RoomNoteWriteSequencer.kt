@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.json.JSONObject
 
 interface NoteWriteStore : NoteImportStore {
     suspend fun softDelete(id: String, ticket: Long, time: Long)
@@ -25,7 +26,21 @@ data class RoomNoteDraft(
     val favorite: Boolean = false,
     val dateLabel: String = "",
     val isAI: Boolean = false,
-)
+) {
+    companion object {
+        /** Reads a WebView note (`localStorage` shape) the same way for writes and reconciliation. */
+        fun fromJson(item: JSONObject) = RoomNoteDraft(
+            title = item.optString("title"),
+            content = item.optString("content"),
+            category = item.optString("category", "Genel"),
+            star = item.optInt("star").coerceIn(0, 5),
+            color = item.optString("color"),
+            favorite = item.optBoolean("fav"),
+            dateLabel = item.optString("date"),
+            isAI = item.optBoolean("isAI"),
+        )
+    }
+}
 
 sealed class RoomWriteAck {
     data object Applied : RoomWriteAck()
@@ -37,7 +52,7 @@ sealed class RoomWriteAck {
  * Orders Room shadow writes per note across activity recreation and process restarts.
  *
  * A ticket is a hybrid clock: `max(last + 1, wall clock)`, seeded once from the largest
- * persisted `writeTicket`. Applied writes store their ticket in `writeTicket` and the wall-clock
+ * persisted ticket. Applied writes store their ticket in `writeTicket` and the wall-clock
  * time in `modifiedAt`; only the ticket decides ordering. Assign [nextTicket] on the bridge
  * thread before launching work. Tombstones are never revived. Note IDs stay `city::id`.
  */
@@ -75,35 +90,7 @@ class RoomNoteWriteSequencer(
         val key = RoomNoteKeys.key(city, noteId)
         return mutex.withLock {
             requestId?.let { id -> recentRequests[id]?.let { return@withLock it } }
-            val existing = store.findAny(key)
-            val ack = when {
-                existing?.deletedAt != null ->
-                    RoomWriteAck.Rejected("Deleted note cannot be restored by a stale write")
-                existing != null && existing.writeTicket >= ticket -> RoomWriteAck.IgnoredStale
-                else -> {
-                    val now = clock()
-                    store.upsert(
-                        NoteEntity(
-                            id = key,
-                            city = city,
-                            title = draft.title,
-                            content = draft.content,
-                            category = draft.category,
-                            star = draft.star.coerceIn(0, 5),
-                            color = draft.color,
-                            favorite = draft.favorite,
-                            isAI = draft.isAI,
-                            dateLabel = draft.dateLabel,
-                            createdAt = existing?.createdAt ?: now,
-                            writeTicket = ticket,
-                            modifiedAt = now,
-                            deletedAt = null,
-                            syncState = existing?.syncState ?: "LOCAL"
-                        )
-                    )
-                    RoomWriteAck.Applied
-                }
-            }
+            val ack = applyUpsert(city, key, draft, ticket)
             requestId?.let { recentRequests[it] = ack }
             ack
         }
@@ -113,33 +100,80 @@ class RoomNoteWriteSequencer(
         val key = RoomNoteKeys.key(city, noteId)
         return mutex.withLock {
             requestId?.let { id -> recentRequests[id]?.let { return@withLock it } }
-            val existing = store.findAny(key)
-            val ack = when {
-                existing == null -> {
-                    val now = clock()
-                    store.upsert(
-                        NoteEntity(
-                            id = key,
-                            city = city,
-                            title = "",
-                            createdAt = now,
-                            writeTicket = ticket,
-                            modifiedAt = now,
-                            deletedAt = now,
-                            syncState = "PENDING"
-                        )
-                    )
-                    RoomWriteAck.Applied
-                }
-                existing.deletedAt != null -> RoomWriteAck.Applied
-                existing.writeTicket >= ticket -> RoomWriteAck.IgnoredStale
-                else -> {
-                    store.softDelete(key, ticket, clock())
-                    RoomWriteAck.Applied
-                }
-            }
+            val ack = applyDelete(city, key, ticket)
             requestId?.let { recentRequests[it] = ack }
             ack
+        }
+    }
+
+    /** Caller holds [mutex]. [changedAt] is the wall-clock time of the user's change. */
+    internal suspend fun applyUpsert(
+        city: String,
+        key: String,
+        draft: RoomNoteDraft,
+        ticket: Long,
+        changedAt: Long = clock(),
+    ): RoomWriteAck {
+        val existing = store.findAny(key)
+        return when {
+            existing?.deletedAt != null ->
+                RoomWriteAck.Rejected("Deleted note cannot be restored by a stale write")
+            existing != null && existing.writeTicket >= ticket -> RoomWriteAck.IgnoredStale
+            else -> {
+                store.upsert(
+                    NoteEntity(
+                        id = key,
+                        city = city,
+                        title = draft.title,
+                        content = draft.content,
+                        category = draft.category,
+                        star = draft.star.coerceIn(0, 5),
+                        color = draft.color,
+                        favorite = draft.favorite,
+                        isAI = draft.isAI,
+                        dateLabel = draft.dateLabel,
+                        createdAt = existing?.createdAt ?: changedAt,
+                        writeTicket = ticket,
+                        modifiedAt = changedAt,
+                        deletedAt = null,
+                        syncState = existing?.syncState ?: "LOCAL"
+                    )
+                )
+                RoomWriteAck.Applied
+            }
+        }
+    }
+
+    /** Caller holds [mutex]. A deletion keeps the row's fields as a tombstone. */
+    internal suspend fun applyDelete(
+        city: String,
+        key: String,
+        ticket: Long,
+        changedAt: Long = clock(),
+    ): RoomWriteAck {
+        val existing = store.findAny(key)
+        return when {
+            existing == null -> {
+                store.upsert(
+                    NoteEntity(
+                        id = key,
+                        city = city,
+                        title = "",
+                        createdAt = changedAt,
+                        writeTicket = ticket,
+                        modifiedAt = changedAt,
+                        deletedAt = changedAt,
+                        syncState = "PENDING"
+                    )
+                )
+                RoomWriteAck.Applied
+            }
+            existing.deletedAt != null -> RoomWriteAck.Applied
+            existing.writeTicket >= ticket -> RoomWriteAck.IgnoredStale
+            else -> {
+                store.softDelete(key, ticket, changedAt)
+                RoomWriteAck.Applied
+            }
         }
     }
 
@@ -154,9 +188,16 @@ class RoomNoteWriteSequencer(
         fun forDao(dao: NoteDao): RoomNoteWriteSequencer =
             RoomNoteWriteSequencer(store = RoomNoteWriteStore(dao), seed = { dao.maxWriteTicket() ?: 0L })
 
-        fun shared(dao: NoteDao): RoomNoteWriteSequencer =
+        /** Seeds above journaled tickets too: a write cut off by a crash must not share a ticket with a new one. */
+        fun forDatabase(db: CityNotesDatabase): RoomNoteWriteSequencer =
+            RoomNoteWriteSequencer(
+                store = RoomNoteWriteStore(db.notes()),
+                seed = { maxOf(db.notes().maxWriteTicket() ?: 0L, db.journal().maxTicket() ?: 0L) }
+            )
+
+        fun shared(db: CityNotesDatabase): RoomNoteWriteSequencer =
             shared ?: synchronized(this) {
-                shared ?: forDao(dao).also { shared = it }
+                shared ?: forDatabase(db).also { shared = it }
             }
     }
 }

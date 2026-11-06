@@ -1,5 +1,18 @@
 # DEVAM
 
+## 2026-11-06 — P6 veri tutarlılığı ve güvenli toparlama
+
+- **Dal:** `feature/room-migration-validation` (başlangıç `316ef27`, `main` dokunulmadı, push/merge yok)
+- **Durum:** tamamlandı (emülatörde; onay arayüzü yok)
+- **Ne yapıldı:**
+  - Room v3'e içerik saklamayan kalıcı yazma günlüğü (`note_write_journal`) eklendi. Migration yalnız bu tabloyu ekliyor. Her köprü yazması kuyruğa girmeden önce bilet ve SHA-256 parmak iziyle `PENDING` olarak kaydediliyor.
+  - Açılışta `localStorage` salt okunur olarak Room ile alan alan karşılaştırılıyor (başlık, içerik, kategori, yıldız, renk, favori, tarih, isAI). Karşılaştırma ve onarım tek bir transaction'da, sıralayıcı kilidi altında yapılıyor.
+  - Onarım yalnız günlük kanıtıyla yapılıyor: Room'dan yeni, parmak izi `localStorage` ile aynı, bekleyen bir yazma olmalı. Değiştirilen satır saklanıyor. Tombstone diriltilmiyor, satır silinmiyor, Room'un daha yeni olduğu veya kökeni belirsiz satırlar yalnız raporlanıyor.
+  - Room ve Gemini logları içeriksiz ve anahtarsız hâle getirildi.
+  - Emülatörde gerçek ani kapanma (400 düzenleme + `force-stop`) günlük kanıtıyla onarıldı. WebView'ın son `localStorage` yazmalarını kaybettiği görüldü; Room'un daha yeni kaldığı durum ezilmeden raporlandı. Altı kontrollü fark doğru sınıflandı ve tekrar açılışta değişiklik olmadı.
+  - `assembleDebug` + `testDebugUnitTest` 102/102 geçti. Rapor güncellendi.
+- **Sonraki tek somut adım:** Raporlanan farklar için kullanıcı onaylı uzlaştırma ekranı (önizleme modu hazır); ardından `localStorage` kaybı nedeniyle Room'u ana kaynak yapma planı.
+
 ## 2026-11-06 — P5 Android cihaz doğrulaması
 
 - **Dal:** `feature/room-migration-validation` (başlangıç `5f588d8`, `main` dokunulmadı, push/merge yok)

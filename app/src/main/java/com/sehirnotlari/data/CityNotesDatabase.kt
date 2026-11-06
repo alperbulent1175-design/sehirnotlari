@@ -5,9 +5,10 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [NoteEntity::class], version = 2, exportSchema = true)
+@Database(entities = [NoteEntity::class, NoteWriteJournalEntry::class], version = 3, exportSchema = true)
 abstract class CityNotesDatabase : RoomDatabase() {
     abstract fun notes(): NoteDao
+    abstract fun journal(): NoteJournalDao
 
     companion object {
         const val NAME = "city_notes.db"

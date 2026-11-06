@@ -925,8 +925,8 @@ let msy=0;
 document.getElementById('modalEl').addEventListener('touchstart',e=>msy=e.touches[0].clientY,{passive:true});
 document.getElementById('modalEl').addEventListener('touchend',e=>{if(e.changedTouches[0].clientY-msy>80)closeModal();},{passive:true});
 
-// Read-only startup snapshot: compare Room data without replacing localStorage.
-// This deliberately avoids resurrecting notes deleted through the legacy UI.
+// Read-only Room snapshot (fallback when reconcileRoomNotes is unavailable): compare
+// Room data without replacing localStorage, so deleted legacy notes never reappear.
 let roomPilotSnapshot=null;
 // The legacy import is intentionally not triggered automatically.
 window.onRoomImportResult=function(ok,inserted,skipped,error){
@@ -973,7 +973,35 @@ function requestRoomPilotSnapshot(){
     }catch(e){roomPilotReadFailed(e.message||'Room bridge unavailable');}
   }
 }
-window.addEventListener('load',requestRoomPilotSnapshot);
+// Startup reconciliation sends a read-only copy of localStorage; nothing here writes it back.
+// Native repairs Room only where its write journal proves an interrupted write and reports
+// every other difference. The console gets counts only; per-note details stay in memory.
+window.roomReconcileReport=null;
+let roomReconcileRequest=null,roomReconcileTimer=null;
+function roomReconcileFailed(message){
+  if(roomReconcileTimer!==null){clearTimeout(roomReconcileTimer);roomReconcileTimer=null;}
+  roomReconcileRequest=null;
+  console.error('Room reconcile failed:',message);
+  toast('⚠️ Room verileri okunamadı; mevcut notlar korunuyor');
+}
+window.onRoomReconcileResult=function(requestId,report,error){
+  if(requestId!==roomReconcileRequest){console.info('[RoomBridge] reconcile result for unknown request '+requestId);return;}
+  if(error||!report||!report.summary){roomReconcileFailed(error||'Invalid reconcile report');return;}
+  if(roomReconcileTimer!==null){clearTimeout(roomReconcileTimer);roomReconcileTimer=null;}
+  roomReconcileRequest=null;
+  window.roomReconcileReport=report;
+  console.info('[RoomBridge] reconcile '+Object.entries(report.summary).map(([k,v])=>k+'='+v).join(' '));
+};
+function requestRoomReconcile(apply){
+  if(!(window.Android&&typeof window.Android.reconcileRoomNotes==='function')){requestRoomPilotSnapshot();return;}
+  const requestId='reconcile-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+  roomReconcileRequest=requestId;
+  if(roomReconcileTimer!==null)clearTimeout(roomReconcileTimer);
+  roomReconcileTimer=setTimeout(()=>roomReconcileFailed('Room reconcile timed out'),15000);
+  try{window.Android.reconcileRoomNotes(JSON.stringify(DB),requestId,apply!==false);}
+  catch(e){roomReconcileFailed(e.message||'Room bridge unavailable');}
+}
+window.addEventListener('load',()=>requestRoomReconcile(true));
 
 // Room shadow-write pilot: localStorage remains the authoritative source until
 // startup hydration, delete and edit flows have passed Android device tests.

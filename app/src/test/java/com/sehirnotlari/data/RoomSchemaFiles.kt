@@ -12,10 +12,17 @@ object RoomSchemaFiles {
         return JSONObject(file.readText()).getJSONObject("database")
     }
 
-    fun notesEntity(version: Int): JSONObject {
+    fun notesEntity(version: Int): JSONObject = entity(version, "notes")
+
+    fun entity(version: Int, table: String): JSONObject {
         val entities = database(version).getJSONArray("entities")
         return (0 until entities.length()).map { entities.getJSONObject(it) }
-            .first { it.getString("tableName") == "notes" }
+            .first { it.getString("tableName") == table }
+    }
+
+    fun tables(version: Int): List<String> {
+        val entities = database(version).getJSONArray("entities")
+        return (0 until entities.length()).map { entities.getJSONObject(it).getString("tableName") }
     }
 
     fun columns(version: Int): List<String> {

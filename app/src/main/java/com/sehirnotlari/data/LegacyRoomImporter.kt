@@ -34,10 +34,10 @@ object LegacyRoomImporter {
         val cities = try {
             JSONObject(json)
         } catch (_: Exception) {
-            throw IllegalArgumentException("Invalid legacy notes payload")
+            throw RoomBridgeFailure("Invalid legacy notes payload")
         }
         if (cities.length() == 0 && json.trim() != "{}") {
-            throw IllegalArgumentException("Invalid legacy notes payload")
+            throw RoomBridgeFailure("Invalid legacy notes payload")
         }
         var inserted = 0
         var skipped = 0
@@ -45,12 +45,12 @@ object LegacyRoomImporter {
         while (keys.hasNext()) {
             val city = keys.next()
             val notes = cities.optJSONArray(city)
-                ?: throw IllegalArgumentException("Invalid notes array for city")
+                ?: throw RoomBridgeFailure("Invalid notes array for city")
             for (i in 0 until notes.length()) {
                 val item = notes.optJSONObject(i)
-                    ?: throw IllegalArgumentException("Invalid note entry")
+                    ?: throw RoomBridgeFailure("Invalid note entry")
                 val id = RoomNoteKeys.idFromJson(item.opt("id"))
-                    ?: throw IllegalArgumentException("Missing or invalid note id")
+                    ?: throw RoomBridgeFailure("Missing or invalid note id")
                 val key = RoomNoteKeys.key(city, id)
                 // Existing active rows and tombstones are left untouched on retry.
                 if (store.findAny(key) != null) {

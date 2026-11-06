@@ -34,4 +34,16 @@ class RoomBridgeScriptsTest {
         assertTrue(failed.contains("Room delete failed"))
         assertTrue(RoomBridgeScripts.notesError("Room read failed").contains("onRoomNotesError"))
     }
+
+    @Test
+    fun reconcileResultPassesReportAsObjectOrError() {
+        assertEquals(
+            "window.onRoomReconcileResult && window.onRoomReconcileResult(\"r-1\",{\"summary\":{}},null);",
+            RoomBridgeScripts.reconcileResult("r-1", org.json.JSONObject().put("summary", org.json.JSONObject()), null)
+        )
+        assertEquals(
+            "window.onRoomReconcileResult && window.onRoomReconcileResult(\"r-2\",null,\"SQLiteFullException\");",
+            RoomBridgeScripts.reconcileResult("r-2", null, "SQLiteFullException")
+        )
+    }
 }

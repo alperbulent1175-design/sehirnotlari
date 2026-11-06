@@ -2,11 +2,14 @@ package com.sehirnotlari
 
 import com.sehirnotlari.data.CityNotesDatabase
 import com.sehirnotlari.data.LegacyRoomImporter
+import com.sehirnotlari.data.NoteWriteJournal
+import com.sehirnotlari.data.RoomBridgeErrors
 import com.sehirnotlari.data.RoomBridgeScripts
 import com.sehirnotlari.data.RoomNoteDraft
 import com.sehirnotlari.data.RoomNoteImportStore
 import com.sehirnotlari.data.RoomNoteKeys
 import com.sehirnotlari.data.RoomNoteWriteSequencer
+import com.sehirnotlari.data.reconcileWithLegacy
 import com.sehirnotlari.data.toBridgeError
 import com.sehirnotlari.data.toBridgeSuccess
 import androidx.room.withTransaction
@@ -63,7 +66,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private val notesDatabase by lazy { CityNotesDatabase.get(applicationContext) }
-    private val noteWriteSequencer by lazy { RoomNoteWriteSequencer.shared(notesDatabase.notes()) }
+    private val noteWriteSequencer by lazy { RoomNoteWriteSequencer.shared(notesDatabase) }
+    private val noteWriteJournal by lazy { NoteWriteJournal(notesDatabase.journal()) }
     private lateinit var releaseUpdater: GithubReleaseUpdater
     private var selectedCityForPdf: String? = null
 
@@ -159,8 +163,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun extractTextFromPdf(uri: Uri) {
-        val keyPrefix = BuildConfig.GEMINI_API_KEY.take(4)
-        Log.d("SehirNotlari", "PDF Analysis started. Key prefix: $keyPrefix")
+        Log.d("SehirNotlari", "PDF Analysis started")
         webView.evaluateJavascript("showLoading('PDF işleniyor...')", null)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -191,7 +194,7 @@ class MainActivity : AppCompatActivity() {
                 val response = generativeModel.generateContent(inputContent)
                 val aiResponse = response.text
                 if (aiResponse == null) {
-                    Log.e("SehirNotlari", "PDF Analysis: AI returned null text. Full response: $response")
+                    Log.e("SehirNotlari", "PDF Analysis: AI returned null text")
                     throw Exception("AI yanıt vermedi")
                 }
 
@@ -202,8 +205,7 @@ class MainActivity : AppCompatActivity() {
                     webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(title)}, ${JSONObject.quote(summary)})", null)
                 }
             } catch (e: Exception) {
-                val stackTrace = Log.getStackTraceString(e)
-                Log.e("SehirNotlari", "PDF Error for city $selectedCityForPdf\n$stackTrace")
+                Log.e("SehirNotlari", "PDF Analysis failed error=${e.javaClass.simpleName}")
                 withContext(Dispatchers.Main) {
                     val errorMsg = e.message ?: e.toString()
                     webView.evaluateJavascript("hideLoading()", null)
@@ -333,8 +335,8 @@ class MainActivity : AppCompatActivity() {
                     Log.i(ROOM_LOG, "import ok inserted=$inserted skipped=$skipped")
                     postRoomResult(RoomBridgeScripts.importResult(true, inserted, skipped, null))
                 } catch (e: Exception) {
-                    Log.e(ROOM_LOG, "import failed", e)
-                    postRoomResult(RoomBridgeScripts.importResult(false, 0, 0, e.message ?: "Room import failed"))
+                    Log.e(ROOM_LOG, "import failed error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.importResult(false, 0, 0, RoomBridgeErrors.safe(e)))
                 }
             }
         }
@@ -347,18 +349,21 @@ class MainActivity : AppCompatActivity() {
             val ticket = try {
                 sequencer.nextTicket()
             } catch (e: Exception) {
-                Log.e(ROOM_LOG, "open failed request=$requestId", e)
-                postRoomResult(RoomBridgeScripts.deleteResult(requestId, false, e.message ?: "Room open failed"))
+                Log.e(ROOM_LOG, "open failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                postRoomResult(RoomBridgeScripts.deleteResult(requestId, false, RoomBridgeErrors.safe(e)))
                 return
             }
+            journalWrite(requestId) { noteWriteJournal.recordDelete(ticket, city, id) }
             RoomNoteWriteSequencer.writeScope.launch {
                 try {
                     val ack = sequencer.delete(city, id, ticket, requestId)
+                    runCatching { noteWriteJournal.resolve(ticket, ack) }
                     Log.i(ROOM_LOG, "delete request=$requestId ticket=$ticket ack=$ack")
                     postRoomResult(RoomBridgeScripts.deleteResult(requestId, ack.toBridgeSuccess(), ack.toBridgeError()))
                 } catch (e: Exception) {
-                    Log.e(ROOM_LOG, "delete failed request=$requestId", e)
-                    postRoomResult(RoomBridgeScripts.deleteResult(requestId, false, e.message ?: "Room delete failed"))
+                    runCatching { noteWriteJournal.failed(ticket) }
+                    Log.e(ROOM_LOG, "delete failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.deleteResult(requestId, false, RoomBridgeErrors.safe(e)))
                 }
             }
         }
@@ -368,40 +373,78 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun upsertRoomNote(city: String, noteJson: String, requestId: String) {
             if (city.isBlank() || city.length > 120 || noteJson.length > 100_000 || requestId.length > 100) return
+            val item = try {
+                JSONObject(noteJson)
+            } catch (_: Exception) {
+                null
+            }
+            val id = item?.let { RoomNoteKeys.idFromJson(it.opt("id")) }
+            if (item == null || id == null) {
+                Log.e(ROOM_LOG, "upsert failed request=$requestId error=Invalid note payload")
+                postRoomResult(RoomBridgeScripts.writeResult(requestId, false, "Invalid note payload"))
+                return
+            }
+            val draft = RoomNoteDraft.fromJson(item)
             val sequencer = noteWriteSequencer
             val ticket = try {
                 sequencer.nextTicket()
             } catch (e: Exception) {
-                Log.e(ROOM_LOG, "open failed request=$requestId", e)
-                postRoomResult(RoomBridgeScripts.writeResult(requestId, false, e.message ?: "Room open failed"))
+                Log.e(ROOM_LOG, "open failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                postRoomResult(RoomBridgeScripts.writeResult(requestId, false, RoomBridgeErrors.safe(e)))
+                return
+            }
+            journalWrite(requestId) { noteWriteJournal.recordUpsert(ticket, city, id, draft) }
+            RoomNoteWriteSequencer.writeScope.launch {
+                try {
+                    val ack = sequencer.upsert(city, id, draft, ticket, requestId.takeIf { it.isNotBlank() })
+                    runCatching { noteWriteJournal.resolve(ticket, ack) }
+                    Log.i(ROOM_LOG, "upsert request=$requestId ticket=$ticket ack=$ack")
+                    postRoomResult(RoomBridgeScripts.writeResult(requestId, ack.toBridgeSuccess(), ack.toBridgeError()))
+                } catch (e: Exception) {
+                    runCatching { noteWriteJournal.failed(ticket) }
+                    Log.e(ROOM_LOG, "upsert failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.writeResult(requestId, false, RoomBridgeErrors.safe(e)))
+                }
+            }
+        }
+
+        // Without a journal entry the write still runs; a crash would then only be reported, not repaired.
+        private inline fun journalWrite(requestId: String, record: () -> Unit) {
+            try {
+                record()
+            } catch (e: Exception) {
+                Log.e(ROOM_LOG, "journal failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+            }
+        }
+
+        /**
+         * Startup comparison of localStorage (sent read-only by the WebView) with Room.
+         * Room is repaired only where the write journal proves an interrupted write.
+         */
+        @JavascriptInterface
+        fun reconcileRoomNotes(json: String, requestId: String, apply: Boolean) {
+            if (requestId.isBlank() || requestId.length > 100) return
+            LegacyRoomImporter.oversizedPayloadMessage(json)?.let { message ->
+                postRoomResult(RoomBridgeScripts.reconcileResult(requestId, null, message))
+                return
+            }
+            val sequencer = noteWriteSequencer
+            // Writes the page makes after this call get larger tickets and are left for the next start.
+            val cutoff = try {
+                sequencer.nextTicket()
+            } catch (e: Exception) {
+                Log.e(ROOM_LOG, "open failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                postRoomResult(RoomBridgeScripts.reconcileResult(requestId, null, RoomBridgeErrors.safe(e)))
                 return
             }
             RoomNoteWriteSequencer.writeScope.launch {
                 try {
-                    val item = JSONObject(noteJson)
-                    val id = RoomNoteKeys.idFromJson(item.opt("id"))
-                        ?: throw IllegalArgumentException("Missing note id")
-                    val ack = sequencer.upsert(
-                        city,
-                        id,
-                        RoomNoteDraft(
-                            title = item.optString("title"),
-                            content = item.optString("content"),
-                            category = item.optString("category", "Genel"),
-                            star = item.optInt("star"),
-                            color = item.optString("color"),
-                            favorite = item.optBoolean("fav"),
-                            dateLabel = item.optString("date"),
-                            isAI = item.optBoolean("isAI")
-                        ),
-                        ticket,
-                        requestId.takeIf { it.isNotBlank() }
-                    )
-                    Log.i(ROOM_LOG, "upsert request=$requestId ticket=$ticket ack=$ack")
-                    postRoomResult(RoomBridgeScripts.writeResult(requestId, ack.toBridgeSuccess(), ack.toBridgeError()))
+                    val report = notesDatabase.reconcileWithLegacy(sequencer, json, apply, cutoff)
+                    Log.i(ROOM_LOG, "reconcile request=$requestId ${report.logLine()}")
+                    postRoomResult(RoomBridgeScripts.reconcileResult(requestId, report.toJson(), null))
                 } catch (e: Exception) {
-                    Log.e(ROOM_LOG, "upsert failed request=$requestId", e)
-                    postRoomResult(RoomBridgeScripts.writeResult(requestId, false, e.message ?: "Room write failed"))
+                    Log.e(ROOM_LOG, "reconcile failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.reconcileResult(requestId, null, RoomBridgeErrors.safe(e)))
                 }
             }
         }
@@ -431,10 +474,10 @@ class MainActivity : AppCompatActivity() {
                         webView.evaluateJavascript("window.onRoomNotesReady && window.onRoomNotesReady(${result});", null)
                     }
                 } catch (e: Exception) {
-                    Log.e(ROOM_LOG, "read failed", e)
+                    Log.e(ROOM_LOG, "read failed error=${RoomBridgeErrors.safe(e)}")
                     withContext(Dispatchers.Main) {
                         webView.evaluateJavascript(
-                            RoomBridgeScripts.notesError(e.message ?: "Room read failed"),
+                            RoomBridgeScripts.notesError(RoomBridgeErrors.safe(e)),
                             null
                         )
                     }
@@ -455,16 +498,13 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
-            val keyFromConfig = BuildConfig.GEMINI_API_KEY.trim()
-            val keyPrefix = if (keyFromConfig.length > 4) keyFromConfig.take(4) else "SHORT"
-            Log.d("SehirNotlari", "getCityGuide called for city: $city. Key prefix: $keyPrefix. API: v1")
+            Log.d("SehirNotlari", "getCityGuide called for city: $city")
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val prompt = "Sen profesyonel bir seyahat rehberisin. '$city' şehri için 'Ne yenir?', 'Gezilecek yer' ve 1 cümlelik bilgi ver. HTML (<b>, <br>) kullan. Çok kısa olsun."
-                    Log.d("SehirNotlari", "Sending guide prompt: $prompt")
                     val response = guideModel.generateContent(prompt)
                     val responseText = response.text ?: "Bilgi yok"
-                    Log.d("SehirNotlari", "AI Guide Response: $responseText")
+                    Log.d("SehirNotlari", "AI Guide Response length=${responseText.length}")
                     
                     sharedPrefs.edit().putString(city, responseText).apply()
                     
@@ -472,9 +512,7 @@ class MainActivity : AppCompatActivity() {
                         webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote(responseText)})", null)
                     }
                 } catch (e: Exception) {
-                    val stackTrace = Log.getStackTraceString(e)
-                    Log.e("SehirNotlari", "Error in getCityGuide for city: $city, Exception: ${e.javaClass.name}, Message: ${e.message}")
-                    Log.e("SehirNotlari", "Error StackTrace: $stackTrace")
+                    Log.e("SehirNotlari", "Error in getCityGuide for city: $city, Exception: ${e.javaClass.simpleName}")
                     withContext(Dispatchers.Main) {
                         val errorMsg = e.message ?: "Hata oluştu"
                         webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote("<i>Rehber hazırlanamadı: $errorMsg</i>")})", null)

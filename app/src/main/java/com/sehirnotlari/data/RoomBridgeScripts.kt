@@ -19,6 +19,11 @@ object RoomBridgeScripts {
         return "window.onRoomDeleteResult && window.onRoomDeleteResult(${JSONObject.quote(requestId)},$ok,$err);"
     }
 
+    fun reconcileResult(requestId: String, report: JSONObject?, error: String?): String {
+        val err = if (error == null) "null" else JSONObject.quote(error)
+        return "window.onRoomReconcileResult && window.onRoomReconcileResult(${JSONObject.quote(requestId)},${report ?: "null"},$err);"
+    }
+
     fun notesError(error: String): String =
         "window.onRoomNotesError && window.onRoomNotesError(${JSONObject.quote(error)});"
 }

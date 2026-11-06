@@ -40,6 +40,31 @@ class NoteSchemaContractTest {
     }
 
     @Test
+    fun v3AddsOnlyTheJournalTableAndLeavesNotesUnchanged() {
+        assertEquals(3, RoomSchemaFiles.database(3).getInt("version"))
+        assertEquals(listOf("notes", "note_write_journal"), RoomSchemaFiles.tables(3))
+        assertEquals(RoomSchemaFiles.notesEntity(2).toString(), RoomSchemaFiles.notesEntity(3).toString())
+        val journal = RoomSchemaFiles.entity(3, "note_write_journal")
+        val indices = journal.getJSONArray("indices")
+        val expected = listOf(journal.getString("createSql")) +
+            (0 until indices.length()).map { indices.getJSONObject(it).getString("createSql") }
+        assertEquals(expected.map { it.replace("\${TABLE_NAME}", "note_write_journal") }, NoteSchemaMigrations.MIGRATION_2_3_SQL)
+        NoteSchemaMigrations.MIGRATION_2_3_SQL.forEach {
+            assertTrue(it.startsWith("CREATE TABLE IF NOT EXISTS") || it.startsWith("CREATE INDEX IF NOT EXISTS"))
+        }
+    }
+
+    @Test
+    fun journalStoresFingerprintsNotNoteText() {
+        val columns = RoomSchemaFiles.entity(3, "note_write_journal").getJSONArray("fields")
+        val names = (0 until columns.length()).map { columns.getJSONObject(it).getString("columnName") }
+        assertEquals(
+            listOf("ticket", "noteKey", "city", "op", "fingerprint", "state", "createdAt", "resolvedAt", "previousJson"),
+            names
+        )
+    }
+
+    @Test
     fun migrationCopiesEveryV1ColumnAndLeavesUnknownsNull() {
         val copy = NoteSchemaMigrations.MIGRATION_1_2_SQL.single { it.startsWith("INSERT INTO") }
         val select = copy.substringAfter("SELECT ")

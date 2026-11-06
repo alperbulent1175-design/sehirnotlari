@@ -14,6 +14,10 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE deletedAt IS NULL ORDER BY writeTicket DESC")
     suspend fun allActive(): List<NoteEntity>
 
+    /** Active rows and tombstones. */
+    @Query("SELECT * FROM notes")
+    suspend fun allRows(): List<NoteEntity>
+
     // Blocking on purpose: seeds the write ticket clock from the JavaBridge thread, never main.
     @Query("SELECT MAX(writeTicket) FROM notes")
     fun maxWriteTicket(): Long?

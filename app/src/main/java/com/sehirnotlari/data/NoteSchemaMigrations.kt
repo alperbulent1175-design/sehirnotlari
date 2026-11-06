@@ -35,5 +35,19 @@ object NoteSchemaMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2)
+    /** v2 → v3 only adds the write journal; `notes` is not touched. */
+    val MIGRATION_2_3_SQL: List<String> = listOf(
+        "CREATE TABLE IF NOT EXISTS `note_write_journal` (`ticket` INTEGER NOT NULL, `noteKey` TEXT NOT NULL, " +
+            "`city` TEXT NOT NULL, `op` TEXT NOT NULL, `fingerprint` TEXT, `state` TEXT NOT NULL, " +
+            "`createdAt` INTEGER NOT NULL, `resolvedAt` INTEGER, `previousJson` TEXT, PRIMARY KEY(`ticket`))",
+        "CREATE INDEX IF NOT EXISTS `index_note_write_journal_noteKey` ON `note_write_journal` (`noteKey`)",
+    )
+
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            MIGRATION_2_3_SQL.forEach(db::execSQL)
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }

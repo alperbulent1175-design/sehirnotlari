@@ -356,3 +356,85 @@ Test için köprü doğrudan çağrıldı; `localStorage` değişmedi (`before =
 ### Gereken ortam (eksikleri tamamlamak için)
 - Fiziksel bir Android cihaz (USB hata ayıklama açık) veya daha eski API'li (ör. API 24/26/30) ek AVD'ler; bunun için Android Studio SDK Manager'dan ilgili sistem imajları ve isteğe bağlı olarak `cmdline-tools`.
 - Yapay zekâ notu için geçerli Gemini anahtarı ve ağ (yerelde mevcut, ama test kapsamına alınmadı).
+
+## P6 — Veri tutarlılığı ve güvenli toparlama (6 Kasım 2026)
+
+Başlangıç: `316ef27d0e30886f48016afc7e504e492aea33ec`. Push/merge yok. `main` değişmedi. `localStorage` (`tur_v10`) ana kaynak olarak kaldı. Toparlama onu yalnız okur; cihazda her senaryodan önce ve sonra alınan `tur_v10` kopyaları bayt bayt aynı çıktı. Otomatik Room ana kaynak geçişi açılmadı. Not kimlikleri değişmedi. Yıkıcı migration yok. Toparlama hiçbir Room satırını silmez ve hiçbir tombstone'u diriltmez.
+
+### Sorun
+Not önce eşzamanlı olarak `localStorage`'a yazılır, sonra Room'a gönderilir. Room yazması süreç içi kuyrukta bekler. Süreç bu arada ölürse Room eski kalır (P5 risk 1). Cihazda ikinci bir sorun da ortaya çıktı: **Chromium WebView `localStorage`'ı diske gecikmeli yazıyor.** Süreç öldürülünce son `localStorage` yazmaları da kaybolabiliyor, bu yüzden Room `localStorage`'dan *daha yeni* kalabiliyor. Bu nedenle iki taraftan hiçbiri her zaman doğru sayılamaz: Room'u körlemesine `localStorage`'a eşitlemek, daha yeni bir Room kaydının üzerine eski veri yazabilir.
+
+### Tasarım
+- **Kalıcı yazma günlüğü** (`note_write_journal`, şema v3). Her köprü yazması, kuyruğa alınmadan *önce* JavaBridge thread'inde eşzamanlı olarak `PENDING` durumuyla kaydedilir. Kayıtta bilet, `city::id` anahtarı, işlem (`UPSERT`/`DELETE`) ve notun **SHA-256 parmak izi** bulunur. Not metni günlüğe yazılmaz. Yazma bitince kayıt `APPLIED`, `IGNORED` (eski yazma) veya `REJECTED` (tombstone) olur; istisna olursa `FAILED`. Uygulama bu aralıkta ölürse kayıt `PENDING` kalır ve yarım kalan yazmanın kalıcı kanıtı olur. Günlük yazılamazsa not yazması yine yapılır; hata yalnız içeriksiz olarak loglanır.
+- **Parmak izi** (`NoteFingerprint`): başlık, içerik, kategori, yıldız, renk, favori, isAI ve tarih alanları uzunluk önekiyle birleştirilip özetlenir. Köprü ve toparlama `localStorage` notunu aynı ayrıştırıcıyla (`RoomNoteDraft.fromJson`) okur.
+- **v2 → v3 migration** (`MIGRATION_2_3`) yalnız günlük tablosunu ve indeksini ekler. `notes` tablosuna dokunmaz; şema dosyasında `notes` tanımı v2 ile birebir aynı. Kimlik özeti `3cfaf8977031672fcc732178080cc3c3`.
+- **Açılışta toparlama:** Sayfa yüklenince JS, `JSON.stringify(DB)`'yi salt okunur olarak `Android.reconcileRoomNotes` köprüsüne gönderir. Native taraf, istek anındaki bileti sınır (`cutoff`) olarak alır. Karşılaştırma ve onarım, yazma sıralayıcısının kilidi altında **tek bir Room transaction'ında** yapılır. Sınırdan sonraki yazmalar ve onlara ait günlük kayıtları bu turda değerlendirilmez (`changedSince`); bir sonraki açılışa kalır.
+- **Alan alan karşılaştırma:** başlık, içerik, kategori, yıldız, renk, favori, tarih ve isAI. Room'da isAI bilinmiyorsa (v1 satırı) bu alan karşılaştırılmaz ve satır `UNKNOWN_ORIGIN` olarak işaretlenir.
+- **Onarım kuralı:** Onarım yalnız kanıt varsa yapılır. Kanıt, Room satırının biletinden daha yeni, çözülmemiş (`PENDING`/`FAILED`) ve parmak izi `localStorage`'daki hâlle **birebir aynı** olan bir günlük kaydıdır. Onarım o kaydın biletini ve oluşturulma zamanını kullanır, değiştirilen satırı JSON olarak günlük kaydının `previousJson` alanında saklar. Bu sayede Room'daki önceki hâl geri getirilebilir. Bu kayıttan eski çözülmemiş kayıtlar `SUPERSEDED` olur. Daha yeni olanlar `LOST` olur: iki depoya da ulaşmamışlardır ve metinleri kurtarılamaz.
+- **Tekrar çalıştırılabilirlik ve kesinti:** Onarılan satırın bileti kanıt kaydına eşitlendiği ve kayıt çözüldüğü için ikinci çalıştırma bir şey değiştirmez. Transaction yarıda kesilirse (çökme veya istisna) tamamı geri alınır ve bir sonraki açılışta aynı kanıtla yeniden denenir. Kuyrukta onarımdan sonra biten eski bir yazma, sıralayıcı bileti sayesinde `IgnoredStale` olur. Uygulama yeniden başladığında bilet sayacı, Room ve günlükteki en büyük biletin üstünden devam eder.
+- **Önizleme:** `reconcileRoomNotes(json, id, false)` hiçbir şey yazmaz; kanıtı olan onarımları `REPAIRABLE` olarak raporlar.
+- **Budama:** Çözülmüş günlük kayıtları 30 gün sonra silinir. `PENDING` ve `FAILED` kayıtlar silinmez.
+- **Rapor:** Logcat'te `SehirNotlariRoom … reconcile` ve konsolda `[RoomBridge] reconcile` satırları **yalnız sayıları** gösterir. Not anahtarlı ayrıntılar yalnız WebView belleğindeki `window.roomReconcileReport` içinde tutulur ve loglanmaz.
+
+### Fark türleri ve davranış
+| Tür | Anlamı | Otomatik düzeltme | Kanıt yoksa |
+| :--- | :--- | :--- | :--- |
+| `MISSING_IN_ROOM` | Not `localStorage`'da var, Room'da hiç yok | Parmak izi eşleşen bekleyen `UPSERT` varsa eklenir | Raporlanır |
+| `CONTENT_MISMATCH` | Room'da etkin, alanlar farklı (`fields` listesi) | Room biletinden yeni ve parmak izi eşleşen bekleyen `UPSERT` varsa güncellenir, eski satır `previousJson`'da saklanır | Raporlanır. Günlük `localStorage` hâlinin Room'dan eski olduğunu gösteriyorsa `roomNewer=true` olur |
+| `TOMBSTONE_CONFLICT` | Not `localStorage`'da var, Room'da silinmiş | **Asla düzeltilmez**; eşleşen bekleyen yazma olsa da diriltilmez | Raporlanır |
+| `ONLY_IN_ROOM` | Room'da etkin, `localStorage`'da yok | Room satırından yeni bekleyen `DELETE` varsa yalnız tombstone yapılır; içerik korunur, satır silinmez | Raporlanır, satır silinmez |
+| `UNKNOWN_ORIGIN` | Alanlar aynı, ama satır v1'den veya eski aktarımdan geliyor (`isAI`/`modifiedAt` boş) | Satıra dokunulmaz | Raporlanır |
+| `UNMATCHED_PENDING_WRITE` | Bekleyen yazma iki depoya da ulaşmamış | Kayıt `LOST` olur (yalnız günlük) | Raporlanır, sayısı `lostWrites` |
+
+**Kullanıcı onayı gerektiren durumlar** (otomatik dokunulmaz, yalnız raporlanır): günlük kanıtı olmayan eksik kayıt, farklı içerik ve yalnız Room'da olan not; her tombstone çakışması; kökeni belirsiz satırlar; Room'un daha yeni olduğu durumlar. Henüz bir onay arayüzü yok. Rapor `window.roomReconcileReport` ve önizleme modu üzerinden alınabiliyor.
+
+### Log ve hata güvenliği
+- Room köprüsünün bütün logları ve WebView'a dönen hata mesajları `RoomBridgeErrors.safe` üzerinden geçer. Uygulamanın kendi `RoomBridgeFailure` mesajları sabit metinlerdir (`Invalid note payload`, `Invalid legacy notes payload`…). Diğer istisnalarda yalnız sınıf adı yazılır. Throwable, `e.message` ve JSON loglanmaz. Bu, P5 risk 2'deki `org.json` mesajı sızıntısını kapatır. Eski not aktarımının hataları da `RoomBridgeFailure` kullanıyor.
+- Gemini tarafında API anahtarının ilk 4 karakteri ("Key prefix") loglanıyordu; kaldırıldı. Şehir rehberi istem ve yanıtı da loglanıyordu; artık yalnız yanıt uzunluğu loglanıyor. PDF ve rehber hatalarında yığın izi ve sunucu mesajı yerine yalnız istisna sınıf adı yazılıyor. PDF yanıtının tam metni (`Full response`) artık loglanmıyor. Şehir adı (not dışı, herkese açık veri) rehber loglarında kalıyor.
+- `RoomMigrationGuardTest` bu kuralları kaynak koddan denetler. Gemini kuralı, geçici olarak eski bir log satırı eklenerek sınandı ve test başarısız oldu.
+
+### Otomatik testler (P6)
+- `RoomNoteReconcilerTest` (22, Robolectric, gerçek SQLite dosyası). Her "süreç" veritabanını yeniden açar; `completes=false`, Room yazması sırasında yaşanan çökmeyi temsil eder. Kapsanan senaryolar: çökmede kesilen yeni not ve düzenleme (onarılır, eski satır saklanır); Room'a ulaşmış yazmanın tekrarlanmaması; Room daha yeniyken ve eski `localStorage` için bekleyen yazmalar varken üzerine yazılmaması; günlüksüz eksik kayıt ve alan alan içerik farkı (yalnız rapor); tombstone'un eşleşen bekleyen yazmayla bile diriltilmemesi; kökeni belirsiz satır; çökmede kesilen silme (tombstone olarak tamamlanır); günlüksüz yalnız-Room notu (silinmez); iki tarafa da ulaşmayan yazma (`LOST`); son yazmalarını kaybetmiş `localStorage`; `cutoff` sonrası yazmalar; tekrar çalıştırma; transaction yarıda kesilince geri alma ve yeniden deneme; önizleme; onarımdan sonra biten eski yazma ve sonraki düzenleme; yeniden başlatmada bilet tohumu; budama; bozuk payload; yalnız sayılardan oluşan özet.
+- `NoteFingerprintTest` (6): karşılaştırılan her alan parmak izini değiştiriyor; alan sınırları kaydırılamıyor (uzunluk öneki); isAI bilinmiyorsa satır parmak izi yok; `differingFields` yalnız bilinmeyen isAI'yi atlıyor; WebView notu köprüyle aynı okunuyor; köprü hataları yabancı istisna mesajını yansıtmıyor.
+- `NoteSchemaMigrationTest`: gerçek v2 dosyası v3'e taşınıyor; bütün satırlar korunuyor ve günlük boş geliyor. Yeni kurulum doğrudan v3. `NoteSchemaContractTest` +2: v3 yalnız günlük tablosunu ekliyor; günlükte metin değil parmak izi var. `RoomBridgeScriptsTest` +1. `RoomMigrationGuardTest` +3: Room logları, Gemini logları, salt okunur toparlama ve yalnız sayı loglayan JS.
+
+### Emülatör sonuçları (`emulator-5554`, `SehirNotlari_P5_Test`, API 37, WebView 145)
+Test APK'sı geçici kopyada `versionCode` 100 / `versionName` "100.0" ile derlendi (güncelleyici yüzünden, P5'teki gibi). Depodaki sürüm numarası değişmedi. Cihazdaki derlemenin kaynağı bu commit'le aynı. Tek fark, emülatör testlerinden sonra yapılan Gemini log temizliği: o yol cihazda çalıştırılmadı (Gemini çağrısı gerektirir) ve birim testleriyle denetlendi. Bütün veriler yalnız test notlarıdır.
+
+| Senaryo | Sonuç |
+| :--- | :--- |
+| v2 → v3 yükseltme (`install -r`, veri silinmeden) | `user_version` 3, kimlik `3cfaf897…`, `integrity ok`, günlük tablosu ve indeksi var. 15 `notes` satırı birebir aynı, `tur_v10` özeti değişmedi. İlk toparlama: legacy=13, roomActive=13, tombstones=2, consistent=12, unknownOrigin=1 (v1'den kalan A), onarım 0 |
+| Günlüklü CRUD (uygulamanın kendi işleyicileriyle oluştur/düzenle/sil) | 3 `UPSERT` ve 1 `DELETE` kaydının hepsi `APPLIED` |
+| **Gerçek ani kapanma:** aynı nota 5,3 sn'de 400 hızlı düzenleme, sonra `am force-stop` | Room 298. düzenlemede kaldı. Günlükte 102 `PENDING` vardı. Yeniden açılışta `localStorage` 378. düzenlemedeydi: WebView son 22 yazmayı diske yazmamıştı. Toparlama **repaired=1, lostWrites=22, superseded=79**. Room satırı 378. düzenlemeye getirildi; bilet ve `modifiedAt` kanıt kaydından alındı; 298. düzenleme `previousJson`'da saklandı. `localStorage` değişmedi. İkinci açılış: değişiklik 0 |
+| **Room daha yeni:** başka bir nota 30 düzenleme, 0,4 sn sonra `force-stop` | Room 30. düzenlemeyi tuttu, `localStorage` bunların hepsini kaybetti. Sonuç `CONTENT_MISMATCH` REPORTED, `fields=[content]`. **Room'un üzerine yazılmadı.** `roomNewer=false` çıktı, çünkü `localStorage`'daki eski hâl P6 öncesinde yazılmıştı ve günlükte yoktu |
+| **Kontrollü farklar** (Room dosyası çekildi, yalnız Room tarafında 6 fark oluşturuldu ve cihaza geri yüklendi) | Bkz. aşağıdaki tablo |
+| Kontrollü farklardan sonra ikinci açılış | repaired=0. Onarılan iki not artık tutarlı veya tombstone; kalan dört fark aynen raporlandı |
+| Hata yolları | Bozuk not JSON'u: `upsert failed … error=Invalid note payload`. Bozuk toparlama JSON'u: `reconcile failed … error=Invalid legacy notes payload`. Tombstone'a yazma: `Rejected(Deleted note cannot be restored by a stale write)`. WebView'da aynı sabit mesajlar görüldü |
+| Logcat taraması | Son açılış ve hata yollarından sonra alınan 564 satırlık tam Logcat dökümünde, test başlıkları, içerikleri, gizli test payload'ları ve `tur_v10` için **0 eşleşme** var. Room ve konsol satırlarında yalnız sayılar ve istek kimlikleri bulunuyor |
+
+Kontrollü farklar (ilk açılış: legacy=13, roomActive=12, tombstones=4, consistent=7, repaired=2, `tur_v10` değişmedi, `integrity ok`):
+
+| Room'da yapılan değişiklik | Rapor | Room'un son hâli |
+| :--- | :--- | :--- |
+| Bir satır silindi | `MISSING_IN_ROOM` REPORTED | Eksik kaldı |
+| Bir satırın başlığı değiştirildi | `CONTENT_MISMATCH` REPORTED, `fields=[title]` | Değişmedi |
+| Bir satır tombstone yapıldı | `TOMBSTONE_CONFLICT` REPORTED | Tombstone kaldı |
+| Yalnız Room'da bir not eklendi | `ONLY_IN_ROOM` REPORTED | Etkin kaldı |
+| Bir satır silindi ve `localStorage` parmak iziyle bir `PENDING UPSERT` eklendi | `MISSING_IN_ROOM` **REPAIRED** | Satır eklendi; parmak izi Python ve Kotlin uygulamalarında aynı çıktı |
+| Yalnız Room'da bir not ve onun için `PENDING DELETE` eklendi | `ONLY_IN_ROOM` **REPAIRED** | Tombstone oldu, içerik korundu |
+| (önceden var) Room'un daha yeni kaldığı not / v1'den A | `CONTENT_MISMATCH` REPORTED / `UNKNOWN_ORIGIN` REPORTED | Değişmedi |
+
+Hata yolu denemesinden önceki son günlük durumu: 331 `APPLIED`, 1 `IGNORED`, 3 `REPAIRED`, 79 `SUPERSEDED`, 22 `LOST`, 0 `PENDING`.
+
+### Derleme ve test
+| Komut | Sonuç |
+| :--- | :--- |
+| `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest --rerun-tasks` | **BUILD SUCCESSFUL**. 102 test, 0 başarısız, 0 atlanan (P5'te 67) |
+
+### Kalan riskler
+1. **Onay arayüzü yok:** Raporlanan farklar kullanıcıya gösterilmiyor ve uygulama içinden çözülemiyor. Rapor yalnız `window.roomReconcileReport` ve Logcat sayılarında görülüyor.
+2. **`roomNewer` geçmişe bağlı:** Bu işaret yalnız `localStorage`'daki eski hâl günlükte kayıtlıysa açılır. P6 öncesinde yazılmış notlarda Room'un daha yeni olduğu anlaşılamaz; fark yine de güvenli biçimde yalnız raporlanır.
+3. **`LOST` yazmaların metni kurtarılamaz:** Günlükte yalnız parmak izi var. Bu bilinçli bir tercih: günlük not metni saklamıyor.
+4. **WebView `localStorage` kaybı:** Ana kaynak, süreç ölümünde son saniyelerdeki yazmaları kaybedebiliyor. Toparlama bu yazmaları geri getiremez; yalnız Room'u ezmemeyi ve kaybı saymayı garanti eder. Kalıcı çözüm Room'u ana kaynak yapmak veya `localStorage` yazmasını onaylı hâle getirmektir; ikisi de bu fazın kapsamı dışında.
+5. **Günlük öncesi farklar:** P6'dan önce oluşmuş farkların kanıtı olmadığı için hiçbiri otomatik düzeltilmez.
+6. Fiziksel cihaz ve eski API sürümleri yine denenmedi. Gemini log temizliği cihazda çalıştırılmadı. Önceki riskler sürüyor: geri dönüş yok (v3 → v2 APK'sı Room'u açamaz), Room ana kaynak değil.
