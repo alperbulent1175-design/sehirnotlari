@@ -542,7 +542,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
     <div class="backup-wrap">
       <div class="bk-card"><div class="bk-title">📤 Dışa Aktar</div><div class="bk-desc">Tüm notları JSON olarak indirin.</div><button class="bk-btn primary" onclick="exportJSON()">JSON İndir</button><p class="bk-status" id="exportStatus" role="status" aria-live="polite"></p></div>
       <div class="bk-card"><div class="bk-title">📥 İçe Aktar</div><div class="bk-desc">Önceden dışa aktardığınız JSON'ı yükleyin. Eklenecek notları önce gösterir; mevcut notlar korunur.</div><button type="button" class="bk-btn secondary" onclick="pickImportFile()">Dosya Seç</button><input type="file" id="restoreFile" accept=".json" onchange="importJSON(this)"><p class="bk-status" id="importStatus" role="status" aria-live="polite"></p><button type="button" class="bk-btn secondary" id="impRoomRetry" hidden>Room kopyasını yeniden dene</button></div>
-      <div class="bk-card"><div class="bk-title">📧 E-posta</div><div class="bk-desc">Notları e-posta uygulamanıza aktarın.</div><button class="bk-btn secondary" onclick="emailNotes()">E-posta Aç</button></div>
+      <div class="bk-card"><div class="bk-title">📤 Yedeği Paylaş</div><div class="bk-desc">Notlarınızı JSON dosyası olarak e-posta veya diğer uygulamalarla paylaşın. Alan kişi yedeği içe aktarabilir.</div><button class="bk-btn secondary" onclick="shareNotesBackup()">Yedeği Paylaş</button></div>
       <section class="bk-card" id="cloudCard" aria-labelledby="cloudTitle">
         <h2 class="bk-title" id="cloudTitle">☁️ Bulut Yedekleme</h2>
         <p class="bk-desc">Notlarınızın bir kopyasını Google hesabınıza bağlı, yalnız sizin erişebildiğiniz bir alanda saklar; son 5 tamamlanmış yedek tutulur. Oturum açmadan da uygulama ve notlarınız aynen çalışır.</p>
@@ -2386,7 +2386,20 @@ cloudRefreshState();cloudRender();
 if(cloudState&&cloudState.signedIn)cloudList(false);
 // Covers a backup missed because the app was closed or killed while it was due.
 setTimeout(()=>window.cloudAutoBackup(),20000);
-function emailNotes(){const cs=Object.keys(DB).filter(c=>DB[c]&&DB[c].length);if(!cs.length){toast('Gönderilecek not yok.');return;}let body='TÜRKİYE ŞEHİR NOTLARIM\n\n';cs.forEach(c=>{body+=`== ${c} ==\n`;DB[c].forEach(n=>{body+=`[${n.category}] ${n.title}\n${n.content||''}\n${n.date}\n\n`;});});window.location.href=`mailto:?subject=Türkiye Şehir Notlarım&body=${encodeURIComponent(body)}`;}
+function shareNotesBackup(){
+  if(!NotesFile.count(DB)){toast('Paylaşılacak not yok.');return;}
+  const json=JSON.stringify(DB,null,2);
+  const fileName=NotesFile.fileName(new Date());
+  if(window.Android&&typeof window.Android.shareNotesBackup==='function'){
+    window.Android.shareNotesBackup(json,fileName);
+  }else{
+    const blob=new Blob([json],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=fileName;a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    toast('JSON yedeği indirildi; dosyayı paylaşabilirsiniz.');
+  }
+}
 function clearAll(){if(!confirm('Tüm notlar silinecek. Emin misiniz?'))return;settleDelete();const oldDB=DB;DB={};sv();Object.entries(oldDB).forEach(([city,notes])=>{if(Array.isArray(notes))notes.forEach(note=>mirrorDeletedNoteToRoom(city,note.id));});updateStyles();updateSum();toast('Tüm notlar yerel olarak silindi');}
 
 const offBar=document.getElementById('offlineBar');
