@@ -1,5 +1,14 @@
 # DEVAM
 
+## 2026-11-06 — v1.4 ve v1.5-beta.1 yayınlandı
+
+- **Kaynak:** `c28461c` hem `feature/v14-updater-ux` hem `main` (fast-forward). `v1.4` etiketi bu commit'te.
+- **v1.4** (kararlı, latest): `sehirnotlari-1.4.apk`, versionCode 5, SHA-256 `dfeab709…db5e8` (GitHub digest aynı). İmza sertifikası v1.2/v1.3 ile aynı (`edd159fc…6efac`).
+- **v1.5-beta.1** (pre-release): `release/v1.5-beta.1` dalında yalnız sürüm artışı (`136774b`), versionCode 6, SHA-256 `fd28aaf6…204e4`.
+- APK'lar `git archive` ile temiz kopyadan derlendi; Gemini anahtarı yok, test sunucusu boş.
+- Doğrulama: v1.3 → v1.4 (eski güncelleyici) ve v1.4 → v1.5-beta.1 (yeni güncelleyici, gerçek GitHub) emülatörde kuruldu; ayar kapalıyken beta önerilmedi; notlar, Room ve veri güvenliği günlüğü aynı kaldı.
+- **Sonraki tek somut adım:** v1.4'ü gerçek telefonda uygulama içinden almak; sorun yoksa beta kullanıcılarına sonraki kararlı sürüm.
+
 ## 2026-11-06 — v1.4 GitHub otomatik güncelleme (PackageInstaller)
 
 - **Dal:** `feature/v14-updater-ux` (commit/push/tag/Release yok; `main` dokunulmadı)
