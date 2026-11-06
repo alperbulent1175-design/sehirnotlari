@@ -1,0 +1,80 @@
+rules_version = '2';
+
+// Şehir Notları cloud backups. Layout (see CloudBackupFormat.kt / FirestoreBackupStore.kt):
+//   users/{uid}/backups/{backupId}            meta document, written once, never updated
+//   users/{uid}/backups/{backupId}/chunks/{i} payload pieces, written in the same batch as the meta
+// Only the signed-in owner can read or delete; everything else is denied.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedInAs(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function backupPath(uid, backupId) {
+      return /databases/$(database)/documents/users/$(uid)/backups/$(backupId);
+    }
+
+    function chunkPath(uid, backupId, i) {
+      return /databases/$(database)/documents/users/$(uid)/backups/$(backupId)/chunks/$(i);
+    }
+
+    // Piece i exists after this batch, or the backup has fewer pieces.
+    function hasChunk(uid, backupId, count, i) {
+      return count <= i || existsAfter(chunkPath(uid, backupId, string(i)));
+    }
+
+    // A meta document is accepted only as a complete backup: every piece is written in the same batch.
+    function validMeta(uid, backupId) {
+      let d = request.resource.data;
+      let fields = ['format', 'version', 'status', 'createdAt', 'noteCount', 'cityCount', 'deletedCount',
+                    'byteLength', 'sha256', 'chunkCount', 'appVersion'];
+      return backupId.matches('b-[0-9]{13}-[0-9a-f]{8}')
+        && d.keys().hasOnly(fields) && d.keys().hasAll(fields)
+        && d.format == 'sehirnotlari-cloud-backup'
+        && d.version == 1
+        && d.status == 'complete'
+        && d.createdAt == request.time
+        && d.noteCount is int && d.noteCount > 0 && d.noteCount <= 20000
+        && d.cityCount is int && d.cityCount > 0 && d.cityCount <= d.noteCount
+        && d.deletedCount is int && d.deletedCount >= 0 && d.deletedCount <= 100000
+        && d.chunkCount is int && d.chunkCount >= 1 && d.chunkCount <= 8
+        && d.byteLength is int && d.byteLength <= 5242880
+        && d.byteLength > (d.chunkCount - 1) * 700000 && d.byteLength <= d.chunkCount * 700000
+        && d.sha256 is string && d.sha256.matches('[0-9a-f]{64}')
+        && d.appVersion is string && d.appVersion.size() <= 20
+        && hasChunk(uid, backupId, d.chunkCount, 0)
+        && hasChunk(uid, backupId, d.chunkCount, 1)
+        && hasChunk(uid, backupId, d.chunkCount, 2)
+        && hasChunk(uid, backupId, d.chunkCount, 3)
+        && hasChunk(uid, backupId, d.chunkCount, 4)
+        && hasChunk(uid, backupId, d.chunkCount, 5)
+        && hasChunk(uid, backupId, d.chunkCount, 6)
+        && hasChunk(uid, backupId, d.chunkCount, 7);
+    }
+
+    // A piece only together with its new meta document (never added to an existing backup).
+    function validChunk(uid, backupId, index) {
+      let d = request.resource.data;
+      let meta = backupPath(uid, backupId);
+      return index.matches('[0-7]')
+        && d.keys().hasOnly(['index', 'data']) && d.keys().hasAll(['index', 'data'])
+        && d.index is int && string(d.index) == index
+        && d.data is bytes && d.data.size() > 0 && d.data.size() <= 700000
+        && !exists(meta) && existsAfter(meta)
+        && d.index < getAfter(meta).data.chunkCount;
+    }
+
+    match /users/{uid}/backups/{backupId} {
+      allow get, list: if signedInAs(uid);
+      allow create: if signedInAs(uid) && validMeta(uid, backupId);
+      allow delete: if signedInAs(uid);
+
+      match /chunks/{index} {
+        allow get, list: if signedInAs(uid);
+        allow create: if signedInAs(uid) && validChunk(uid, backupId, index);
+        allow delete: if signedInAs(uid);
+      }
+    }
+  }
+}

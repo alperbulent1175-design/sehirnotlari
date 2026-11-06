@@ -20,3 +20,7 @@ key.properties
 app/release/
 *.apk
 *.aab
+app/google-services.json
+firebase/node_modules/
+firebase/.firebaserc
+*-debug.log

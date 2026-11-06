@@ -1,6 +1,13 @@
 package com.sehirnotlari
 
+import com.sehirnotlari.cloud.CloudBackupException
+import com.sehirnotlari.cloud.CloudController
+import com.sehirnotlari.cloud.CloudScripts
+import com.sehirnotlari.cloud.DeletedNote
 import com.sehirnotlari.data.CityNotesDatabase
+import com.sehirnotlari.data.ImportResume
+import com.sehirnotlari.data.ImportResumeResult
+import com.sehirnotlari.data.ImportStaging
 import com.sehirnotlari.data.LegacyRoomImporter
 import com.sehirnotlari.data.NoteWriteJournal
 import com.sehirnotlari.data.RoomBridgeErrors
@@ -16,7 +23,10 @@ import com.sehirnotlari.data.RoomFirstBackups
 import com.sehirnotlari.data.RoomFirstSwitch
 import com.sehirnotlari.data.RoomFirstWrite
 import com.sehirnotlari.data.RoomFirstWriter
+import com.sehirnotlari.data.RestoreItem
+import com.sehirnotlari.data.RestoreNote
 import com.sehirnotlari.data.applyResolution
+import com.sehirnotlari.data.restoreFromLocal
 import com.sehirnotlari.data.dataSafetyStatus
 import com.sehirnotlari.data.inspectNote
 import com.sehirnotlari.data.reconcileWithLegacy
@@ -32,6 +42,7 @@ import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -42,7 +53,9 @@ import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Log
 import android.webkit.JavascriptInterface
@@ -62,16 +75,30 @@ import com.google.ai.client.generativeai.type.HarmCategory
 import com.google.ai.client.generativeai.type.SafetySetting
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.RequestOptions
-import com.google.firebase.database.FirebaseDatabase
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
 import java.util.TimeZone
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.runBlocking
 
 private const val ROOM_LOG = "SehirNotlariRoom"
+private const val FILE_LOG = "SehirNotlariFile"
+// A started file write finishes even if the activity is recreated meanwhile.
+private val notesFileScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+// Per process: only the first page load reads localStorage from disk (see resumeRoomImports).
+private val importResumeChecked = AtomicBoolean(false)
+private const val CLOUD_LOG = "SehirNotlariCloud"
+private const val CLOUD_ROOM_FIRST = "Room ana kaynak modunda bulut yedekleme kullanılamaz."
+// A started backup finishes (or fails whole) even if the activity is recreated meanwhile.
+private val cloudScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 private const val ROOM_FIRST_ON = "Room-first mode is on"
 private const val ROOM_FIRST_OFF = "Room-first mode is off"
 private const val AI_OFF_MESSAGE = "Yapay zekâ özellikleri bu sürümde kullanılamıyor."
@@ -84,6 +111,7 @@ class MainActivity : AppCompatActivity() {
     private val notesDatabase by lazy { CityNotesDatabase.get(applicationContext) }
     private val noteWriteSequencer by lazy { RoomNoteWriteSequencer.shared(notesDatabase) }
     private val noteWriteJournal by lazy { NoteWriteJournal(notesDatabase.journal()) }
+    private val importStaging by lazy { ImportStaging(File(filesDir, ImportStaging.DIR)) }
     // Prototype only: release builds can neither read the mode as on nor switch it on.
     private val roomFirst by lazy {
         RoomFirstSwitch(
@@ -95,6 +123,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
     private val roomFirstWriter by lazy { RoomFirstWriter(notesDatabase, noteWriteSequencer, enabled = roomFirst::isOn) }
+    private val cloud by lazy { CloudController.get(applicationContext) }
     private lateinit var releaseUpdater: GithubReleaseUpdater
     private var selectedCityForPdf: String? = null
 
@@ -124,7 +153,10 @@ class MainActivity : AppCompatActivity() {
     ) { permissions ->
         val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (granted) webView.reload()
+        if (granted) {
+            pageReady = false
+            webView.reload()
+        }
     }
 
     private val micPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -167,6 +199,18 @@ class MainActivity : AppCompatActivity() {
         if (::releaseUpdater.isInitialized) releaseUpdater.onInstallPermissionResult()
     }
 
+    // JSON backup through the system file screens: no storage permission, the user picks name and place.
+    private val notesExportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument(NotesFile.MIME)) { uri ->
+        onNotesExportTarget(uri)
+    }
+    private val notesImportLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        onNotesImportSource(uri)
+    }
+    // The text to save waits in private cache, so it survives the activity being recreated behind the picker.
+    private val pendingExportFile by lazy { File(cacheDir, "notes-export.pending") }
+    private var pageReady = false
+    private var pendingFileScript: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -190,6 +234,22 @@ class MainActivity : AppCompatActivity() {
 
         checkLocationPermissions()
         webView.loadUrl("file:///android_asset/index.html")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        releaseUpdater.onResume()
+    }
+
+    // Leaving the app is the moment for the automatic backup; the page decides whether it is on.
+    override fun onStop() {
+        super.onStop()
+        if (pageReady) webView.evaluateJavascript("window.cloudAutoBackup && window.cloudAutoBackup()", null)
+    }
+
+    override fun onDestroy() {
+        releaseUpdater.onDestroy()
+        super.onDestroy()
     }
 
     private fun extractTextFromPdf(uri: Uri) {
@@ -289,6 +349,8 @@ class MainActivity : AppCompatActivity() {
                 super.onPageFinished(view, url)
                 if (url != null && url.contains("index.html")) {
                     releaseUpdater.onWebViewReady()
+                    pageReady = true
+                    pendingFileScript?.let { pendingFileScript = null; webView.evaluateJavascript(it, null) }
                 }
             }
         }
@@ -330,6 +392,116 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    // A result arriving while the page (re)loads is handed over once it has finished loading.
+    private fun postFileResult(script: String) {
+        runOnUiThread {
+            if (isDestroyed || !::webView.isInitialized) return@runOnUiThread
+            if (pageReady) webView.evaluateJavascript(script, null) else pendingFileScript = script
+        }
+    }
+
+    private fun displayName(uri: Uri): String? = try {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) c.getString(0).take(120) else null
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun declaredSize(uri: Uri): Long? = try {
+        contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun startNotesExport(json: String, fileName: String) {
+        val bytes = try {
+            NotesFile.exportBytes(json)
+        } catch (e: NotesFile.Refused) {
+            postFileResult(NotesFile.script(NotesFile.SAVED_CALLBACK, NotesFile.failed(e.message ?: "Yedek hazırlanamadı.")))
+            return
+        }
+        notesFileScope.launch {
+            try {
+                pendingExportFile.writeBytes(bytes)
+            } catch (e: Exception) {
+                Log.e(FILE_LOG, "export prepare failed error=${e.javaClass.simpleName}")
+                postFileResult(NotesFile.script(NotesFile.SAVED_CALLBACK, NotesFile.failed("Yedek hazırlanamadı. Telefonda yer açıp yeniden deneyin.")))
+                return@launch
+            }
+            runOnUiThread {
+                try {
+                    notesExportLauncher.launch(NotesFile.suggestedName(fileName))
+                } catch (e: ActivityNotFoundException) {
+                    pendingExportFile.delete()
+                    postFileResult(NotesFile.script(NotesFile.SAVED_CALLBACK, NotesFile.failed("Bu cihazda dosya kaydetme ekranı bulunamadı.")))
+                }
+            }
+        }
+    }
+
+    private fun onNotesExportTarget(uri: Uri?) {
+        if (uri == null) {
+            pendingExportFile.delete()
+            Log.i(FILE_LOG, "export cancelled")
+            postFileResult(NotesFile.script(NotesFile.SAVED_CALLBACK, NotesFile.cancelled()))
+            return
+        }
+        notesFileScope.launch {
+            val result = try {
+                if (!pendingExportFile.isFile) throw NotesFile.Refused("Kaydetme yarıda kaldı; lütfen yeniden deneyin.")
+                val bytes = pendingExportFile.readBytes()
+                val stream = try {
+                    contentResolver.openOutputStream(uri, "wt")
+                } catch (_: FileNotFoundException) {
+                    contentResolver.openOutputStream(uri, "w")
+                } catch (_: IllegalArgumentException) {
+                    contentResolver.openOutputStream(uri, "w")
+                } ?: throw IOException("No output stream")
+                stream.use {
+                    it.write(bytes)
+                    it.flush()
+                }
+                Log.i(FILE_LOG, "export ok bytes=${bytes.size}")
+                NotesFile.saved(displayName(uri), bytes.size)
+            } catch (e: Exception) {
+                Log.e(FILE_LOG, "export failed error=${e.javaClass.simpleName}")
+                // Do not leave an empty or partial file that looks like a backup.
+                try { DocumentsContract.deleteDocument(contentResolver, uri) } catch (_: Exception) {}
+                NotesFile.failed((e as? NotesFile.Refused)?.message ?: "Dosya yazılamadı; yedek oluşturulmadı. Başka bir konum seçip yeniden deneyin.")
+            } finally {
+                pendingExportFile.delete()
+            }
+            postFileResult(NotesFile.script(NotesFile.SAVED_CALLBACK, result))
+        }
+    }
+
+    private fun onNotesImportSource(uri: Uri?) {
+        if (uri == null) {
+            Log.i(FILE_LOG, "import cancelled")
+            postFileResult(NotesFile.script(NotesFile.OPENED_CALLBACK, NotesFile.cancelled()))
+            return
+        }
+        notesFileScope.launch {
+            val result = try {
+                NotesFile.checkDeclaredSize(declaredSize(uri))
+                val bytes = contentResolver.openInputStream(uri)?.use { NotesFile.readLimited(it) } ?: throw IOException("No input stream")
+                val text = NotesFile.decode(bytes)
+                Log.i(FILE_LOG, "import read ok bytes=${bytes.size}")
+                NotesFile.opened(displayName(uri), text)
+            } catch (e: NotesFile.Refused) {
+                Log.w(FILE_LOG, "import refused")
+                NotesFile.failed(e.message ?: "Dosya okunamadı.")
+            } catch (e: Exception) {
+                Log.e(FILE_LOG, "import read failed error=${e.javaClass.simpleName}")
+                NotesFile.failed("Dosya okunamadı.")
+            }
+            postFileResult(NotesFile.script(NotesFile.OPENED_CALLBACK, result))
+        }
+    }
+
     // Room writes run in a process scope; a recreated activity's page no longer awaits the old result.
     private fun refuseWithoutAi(): Boolean {
         if (aiEnabled) return false
@@ -342,6 +514,29 @@ class MainActivity : AppCompatActivity() {
             if (!isDestroyed && ::webView.isInitialized) webView.evaluateJavascript(script, null)
         }
     }
+
+    private fun postCloudResult(script: String) = postRoomResult(script)
+
+    private suspend fun runCloud(op: String, requestId: String, block: suspend () -> JSONObject) {
+        val script = try {
+            CloudScripts.result(op, requestId, block(), null)
+        } catch (e: CloudBackupException) {
+            Log.w(CLOUD_LOG, "$op refused request=$requestId")
+            CloudScripts.result(op, requestId, null, e.message)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(CLOUD_LOG, "$op failed request=$requestId error=${e.javaClass.simpleName}")
+            CloudScripts.result(op, requestId, null, "Bulut işlemi tamamlanamadı; yeniden deneyin.")
+        }
+        postCloudResult(script)
+    }
+
+    /** Room deletion records (tombstones) as `city` + WebView id; read only, the rows stay as they are. */
+    private suspend fun roomDeletionRecords(): List<DeletedNote> =
+        notesDatabase.notes().allRows().mapNotNull { row ->
+            row.deletedAt?.let { DeletedNote(row.city, row.id.removePrefix("${row.city}::"), it) }
+        }
 
     inner class WebAppInterface(private val mContext: Context) {
         // Explicit bridge: UI will be switched to Room only after startup hydration is tested.
@@ -454,6 +649,124 @@ class MainActivity : AppCompatActivity() {
                     postRoomResult(RoomBridgeScripts.writeResult(requestId, false, RoomBridgeErrors.safe(e)))
                 }
             }
+        }
+
+        /**
+         * First step of a JSON import the user confirmed, called synchronously before the page stores
+         * the notes. [notesJson] is `[[city, note], …]` of exactly the imported notes. Stages the notes
+         * on disk ([ImportStaging]), then records one RESTORE journal entry per note, all or none, so an
+         * import cut off by a crash is finished at the next start. False: nothing was staged or
+         * recorded, and the page must not store the notes.
+         */
+        @JavascriptInterface
+        fun beginRoomRestore(notesJson: String, requestId: String): Boolean {
+            if (!ImportStaging.ID.matches(requestId)) return false
+            fun fail(message: String): Boolean {
+                Log.e(ROOM_LOG, "restore record failed request=$requestId error=$message")
+                return false
+            }
+            LegacyRoomImporter.oversizedPayloadMessage(notesJson)?.let { return fail(it) }
+            if (refusedInRoomFirst("restore", requestId)) return false
+            val notes = RestoreNote.parseList(notesJson) ?: return fail("Invalid restore payload")
+            val sequencer = noteWriteSequencer
+            val items = try {
+                notes.map { RestoreItem(it.city, it.noteId, sequencer.nextTicket()) }
+            } catch (e: Exception) {
+                return fail(RoomBridgeErrors.safe(e))
+            }
+            try {
+                importStaging.stage(requestId, notes.mapIndexed { i, note -> note.staged(items[i].ticket) })
+            } catch (e: Exception) {
+                return fail(RoomBridgeErrors.safe(e))
+            }
+            return try {
+                notesDatabase.runInTransaction(Runnable {
+                    items.forEachIndexed { i, item -> noteWriteJournal.recordRestore(item.ticket, item.city, item.noteId, notes[i].draft) }
+                })
+                synchronized(recordedRestores) { recordedRestores[requestId] = items }
+                Log.i(ROOM_LOG, "restore recorded request=$requestId notes=${items.size}")
+                true
+            } catch (e: Exception) {
+                if (!importStaging.discard(requestId)) Log.e(ROOM_LOG, "restore staging kept request=$requestId")
+                fail(RoomBridgeErrors.safe(e))
+            }
+        }
+
+        /**
+         * Room side of a recorded restore, called after the page stored the notes. [legacyJson] is the
+         * stored `tur_v10` text and gives each note's content; only notes recorded by [beginRoomRestore]
+         * for [requestId] are restored, and their old Room deletion records may be revived.
+         */
+        @JavascriptInterface
+        fun restoreRoomNotes(legacyJson: String, requestId: String) {
+            if (requestId.isBlank() || requestId.length > 100) return
+            val items = synchronized(recordedRestores) { recordedRestores.remove(requestId) }
+            // Records stay open (FAILED) on every failure, so the next start can still finish the restore.
+            fun fail(message: String) {
+                items?.let { RoomNoteWriteSequencer.writeScope.launch { it.forEach { item -> runCatching { noteWriteJournal.failed(item.ticket) } } } }
+                Log.e(ROOM_LOG, "restore failed request=$requestId error=$message")
+                postRoomResult(RoomBridgeScripts.restoreResult(requestId, null, message))
+            }
+            if (items == null) return fail("Unknown restore request")
+            LegacyRoomImporter.oversizedPayloadMessage(legacyJson)?.let { return fail(it) }
+            if (refusedInRoomFirst("restore", requestId)) return fail(ROOM_FIRST_ON)
+            val sequencer = noteWriteSequencer
+            RoomNoteWriteSequencer.writeScope.launch {
+                try {
+                    val outcome = notesDatabase.restoreFromLocal(sequencer, legacyJson, items)
+                    Log.i(ROOM_LOG, "restore request=$requestId ${outcome.logLine()}")
+                    postRoomResult(RoomBridgeScripts.restoreResult(requestId, outcome.toJson(), null))
+                } catch (e: Exception) {
+                    items.forEach { runCatching { noteWriteJournal.failed(it.ticket) } }
+                    Log.e(ROOM_LOG, "restore failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.restoreResult(requestId, null, RoomBridgeErrors.safe(e)))
+                }
+            }
+        }
+
+        /**
+         * The page could not store the notes of a recorded restore. The staged copy goes first, so a
+         * crash in between can never bring back notes the user was told were not added; then the
+         * records are closed.
+         */
+        @JavascriptInterface
+        fun cancelRoomRestore(requestId: String) {
+            if (requestId.isBlank() || requestId.length > 100) return
+            val items = synchronized(recordedRestores) { recordedRestores.remove(requestId) } ?: return
+            if (!importStaging.discard(requestId)) Log.e(ROOM_LOG, "restore staging kept request=$requestId")
+            RoomNoteWriteSequencer.writeScope.launch {
+                items.forEach { runCatching { noteWriteJournal.cancelled(it.ticket) } }
+                Log.i(ROOM_LOG, "restore cancelled request=$requestId notes=${items.size}")
+            }
+        }
+
+        /**
+         * Called synchronously at page start, before the deletion recovery and Room reconciliation, with
+         * the stored `tur_v10` text. Only the first call of this process acts: a new process has just
+         * read localStorage from disk, while a later page load (e.g. rotation) may read a copy that
+         * was never written. Returns [ImportResumeResult] JSON; the page adds `notes` back and stores them.
+         */
+        @JavascriptInterface
+        fun resumeRoomImports(legacyJson: String): String {
+            if (!importResumeChecked.compareAndSet(false, true)) return ImportResumeResult.NONE.toJson()
+            LegacyRoomImporter.oversizedPayloadMessage(legacyJson)?.let { message ->
+                Log.e(ROOM_LOG, "import resume failed error=$message")
+                return ImportResumeResult.failedJson()
+            }
+            if (refusedInRoomFirst("resume", "")) return ImportResumeResult.NONE.toJson()
+            return try {
+                val result = runBlocking { ImportResume.run(importStaging, legacyJson) { notesDatabase.journal().forNote(it) } }
+                Log.i(ROOM_LOG, "import resume ${result.logLine()}")
+                result.toJson()
+            } catch (e: Exception) {
+                Log.e(ROOM_LOG, "import resume failed error=${RoomBridgeErrors.safe(e)}")
+                ImportResumeResult.failedJson()
+            }
+        }
+
+        /** Restores recorded by [beginRoomRestore] that the page has not finished or cancelled yet. */
+        private val recordedRestores = object : LinkedHashMap<String, List<RestoreItem>>() {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<RestoreItem>>?) = size > 16
         }
 
         // Without a journal entry the write still runs; a crash would then only be reported, not repaired.
@@ -863,6 +1176,24 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { pdfPickerLauncher.launch("application/pdf") }
         }
 
+        /** Opens the system "save as" screen for [json] (the page's notes); the result goes to `onNotesFileSaved`. */
+        @JavascriptInterface
+        fun exportNotesFile(json: String, fileName: String) {
+            startNotesExport(json, fileName)
+        }
+
+        /** Opens the system file picker; the checked file text goes to `onNotesFileOpened`, nothing is merged here. */
+        @JavascriptInterface
+        fun pickNotesFile() {
+            runOnUiThread {
+                try {
+                    notesImportLauncher.launch(NotesFile.OPEN_TYPES)
+                } catch (e: ActivityNotFoundException) {
+                    postFileResult(NotesFile.script(NotesFile.OPENED_CALLBACK, NotesFile.failed("Bu cihazda dosya seçme ekranı bulunamadı.")))
+                }
+            }
+        }
+
         @JavascriptInterface
         fun shareNote(text: String) {
             runOnUiThread {
@@ -897,36 +1228,83 @@ class MainActivity : AppCompatActivity() {
             return calendar.timeInMillis
         }
 
+        // Cloud backup: signed-in Google user only, stored under that user's id (never a device model).
+        // Results go to `onCloudResult`; restoring goes through the page's JSON import (applyImport).
         @JavascriptInterface
-        fun backupToCloud(json: String) {
-            try {
-                val db = FirebaseDatabase.getInstance().reference
-                val deviceId = Build.MODEL.replace(" ", "_") + "_" + Build.ID
-                db.child("backups").child(deviceId).setValue(json)
-                    .addOnSuccessListener { runOnUiThread { webView.evaluateJavascript("toast('✅ Buluta yedeklendi')", null) } }
-                    .addOnFailureListener { e -> runOnUiThread { webView.evaluateJavascript("toast('❌ Hata: ${e.message}')", null) } }
-            } catch (e: Exception) {
-                runOnUiThread { webView.evaluateJavascript("toast('❌ Firebase hazır değil')", null) }
+        fun cloudStatus(): String = cloud.status().toString()
+
+        @JavascriptInterface
+        fun cloudSetAuto(enabled: Boolean): String {
+            cloud.setAuto(enabled)
+            return cloud.status().toString()
+        }
+
+        @JavascriptInterface
+        fun cloudSignIn(requestId: String) {
+            if (!CloudScripts.REQUEST_ID.matches(requestId)) return
+            // The Google account screen needs this activity; leaving the screen cancels the request.
+            lifecycleScope.launch { runCloud("signIn", requestId) { cloud.signIn(this@MainActivity) } }
+        }
+
+        @JavascriptInterface
+        fun cloudSignOut(requestId: String) {
+            if (!CloudScripts.REQUEST_ID.matches(requestId)) return
+            lifecycleScope.launch { runCloud("signOut", requestId) { cloud.signOut(this@MainActivity) } }
+        }
+
+        /** [notesJson] is the stored `tur_v10` text; Room deletion records are added here. */
+        @JavascriptInterface
+        fun cloudBackup(notesJson: String, auto: Boolean, requestId: String) {
+            if (!CloudScripts.REQUEST_ID.matches(requestId)) return
+            LegacyRoomImporter.oversizedPayloadMessage(notesJson)?.let {
+                postCloudResult(CloudScripts.result("backup", requestId, null, "Notlar bulut yedeği için çok büyük; JSON dosyasına yedekleyin."))
+                return
+            }
+            if (refusedInRoomFirst("cloud backup", requestId)) {
+                postCloudResult(CloudScripts.result("backup", requestId, null, CLOUD_ROOM_FIRST))
+                return
+            }
+            cloudScope.launch {
+                runCloud("backup", requestId) { cloud.backup(notesJson, roomDeletionRecords(), BuildConfig.VERSION_NAME, auto) }
             }
         }
 
         @JavascriptInterface
-        fun restoreFromCloud() {
-            try {
-                val db = FirebaseDatabase.getInstance().reference
-                val deviceId = Build.MODEL.replace(" ", "_") + "_" + Build.ID
-                db.child("backups").child(deviceId).get()
-                    .addOnSuccessListener { snapshot ->
-                        val json = snapshot.value as? String
-                        if (json != null) {
-                            runOnUiThread { webView.evaluateJavascript("importFromCloud(${JSONObject.quote(json)})", null) }
-                        } else {
-                            runOnUiThread { webView.evaluateJavascript("toast('⚠️ Yedek bulunamadı')", null) }
+        fun cloudListBackups(requestId: String) {
+            if (!CloudScripts.REQUEST_ID.matches(requestId)) return
+            cloudScope.launch { runCloud("list", requestId) { cloud.list() } }
+        }
+
+        /**
+         * Downloads and verifies one backup for the page's import preview; nothing is stored here.
+         * `localDeleted` lists the backup's notes that were deleted on this phone (Room deletion records).
+         */
+        @JavascriptInterface
+        fun cloudFetchBackup(backupId: String, requestId: String) {
+            if (!CloudScripts.REQUEST_ID.matches(requestId)) return
+            if (refusedInRoomFirst("cloud restore", requestId)) {
+                postCloudResult(CloudScripts.result("fetch", requestId, null, CLOUD_ROOM_FIRST))
+                return
+            }
+            cloudScope.launch {
+                runCloud("fetch", requestId) {
+                    val restored = cloud.fetch(backupId)
+                    val deletedHere = roomDeletionRecords().mapTo(HashSet()) { RoomNoteKeys.key(it.city, it.id) }
+                    val localDeleted = JSONArray()
+                    val notes = JSONObject(restored.notesJson)
+                    notes.keys().forEach { city ->
+                        val list = notes.optJSONArray(city) ?: return@forEach
+                        for (i in 0 until list.length()) {
+                            val id = RoomNoteKeys.idFromJson(list.optJSONObject(i)?.opt("id")) ?: continue
+                            if (RoomNoteKeys.key(city, id) in deletedHere) localDeleted.put(JSONArray().put(city).put(id))
                         }
                     }
-                    .addOnFailureListener { e -> runOnUiThread { webView.evaluateJavascript("toast('❌ Hata: ${e.message}')", null) } }
-            } catch (e: Exception) {
-                runOnUiThread { webView.evaluateJavascript("toast('❌ Firebase hazır değil')", null) }
+                    JSONObject()
+                        .put("backup", restored.meta.toJson())
+                        .put("text", restored.notesJson)
+                        .put("deleted", restored.deleted.size)
+                        .put("localDeleted", localDeleted)
+                }
             }
         }
 
@@ -942,7 +1320,31 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun installUpdate() {
-            releaseUpdater.installDownloaded()
+            releaseUpdater.installUpdate()
+        }
+
+        @JavascriptInterface
+        fun dismissUpdate() {
+            releaseUpdater.dismissUpdate()
+        }
+
+        @JavascriptInterface
+        fun retryUpdate() {
+            releaseUpdater.retryUpdate()
+        }
+
+        /** The two switches only; release data and files never come from the page. */
+        @JavascriptInterface
+        fun updaterSettings(): String = releaseUpdater.settings()
+
+        @JavascriptInterface
+        fun setAutoDownloadUpdates(on: Boolean) {
+            releaseUpdater.setAutoDownload(on)
+        }
+
+        @JavascriptInterface
+        fun setPrereleaseUpdates(on: Boolean) {
+            releaseUpdater.setPrereleases(on)
         }
     }
 }

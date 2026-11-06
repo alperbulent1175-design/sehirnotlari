@@ -54,7 +54,8 @@ sealed class RoomWriteAck {
  * A ticket is a hybrid clock: `max(last + 1, wall clock)`, seeded once from the largest
  * persisted ticket. Applied writes store their ticket in `writeTicket` and the wall-clock
  * time in `modifiedAt`; only the ticket decides ordering. Assign [nextTicket] on the bridge
- * thread before launching work. Tombstones are never revived. Note IDs stay `city::id`.
+ * thread before launching work. Tombstones are never revived, except by [applyRestore] for a
+ * JSON restore the user confirmed and journaled (see [RoomNoteRestorer]). Note IDs stay `city::id`.
  */
 class RoomNoteWriteSequencer(
     private val store: NoteWriteStore,
@@ -120,29 +121,47 @@ class RoomNoteWriteSequencer(
                 RoomWriteAck.Rejected("Deleted note cannot be restored by a stale write")
             existing != null && existing.writeTicket >= ticket -> RoomWriteAck.IgnoredStale
             else -> {
-                store.upsert(
-                    NoteEntity(
-                        id = key,
-                        city = city,
-                        title = draft.title,
-                        content = draft.content,
-                        category = draft.category,
-                        star = draft.star.coerceIn(0, 5),
-                        color = draft.color,
-                        favorite = draft.favorite,
-                        isAI = draft.isAI,
-                        dateLabel = draft.dateLabel,
-                        createdAt = existing?.createdAt ?: changedAt,
-                        writeTicket = ticket,
-                        modifiedAt = changedAt,
-                        deletedAt = null,
-                        syncState = existing?.syncState ?: "LOCAL"
-                    )
-                )
+                store.upsert(activeRow(city, key, draft, ticket, changedAt, existing))
                 RoomWriteAck.Applied
             }
         }
     }
+
+    /**
+     * Caller holds [mutex]. [applyUpsert] that also revives a tombstone written before [ticket].
+     * Only [restoreNote] calls this, for notes whose RESTORE journal record matches localStorage.
+     */
+    internal suspend fun applyRestore(
+        city: String,
+        key: String,
+        draft: RoomNoteDraft,
+        ticket: Long,
+        changedAt: Long = clock(),
+    ): RoomWriteAck {
+        val existing = store.findAny(key)
+        if (existing != null && existing.writeTicket >= ticket) return RoomWriteAck.IgnoredStale
+        store.upsert(activeRow(city, key, draft, ticket, changedAt, existing))
+        return RoomWriteAck.Applied
+    }
+
+    private fun activeRow(city: String, key: String, draft: RoomNoteDraft, ticket: Long, changedAt: Long, existing: NoteEntity?) =
+        NoteEntity(
+            id = key,
+            city = city,
+            title = draft.title,
+            content = draft.content,
+            category = draft.category,
+            star = draft.star.coerceIn(0, 5),
+            color = draft.color,
+            favorite = draft.favorite,
+            isAI = draft.isAI,
+            dateLabel = draft.dateLabel,
+            createdAt = existing?.createdAt ?: changedAt,
+            writeTicket = ticket,
+            modifiedAt = changedAt,
+            deletedAt = null,
+            syncState = existing?.syncState ?: "LOCAL"
+        )
 
     /** Caller holds [mutex]. A deletion keeps the row's fields as a tombstone. */
     internal suspend fun applyDelete(

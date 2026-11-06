@@ -1,5 +1,42 @@
 # DEVAM
 
+## 2026-11-06 — v1.4 GitHub otomatik güncelleme (PackageInstaller)
+
+- **Dal:** `feature/v14-updater-ux` (commit/push/tag/Release yok; `main` dokunulmadı)
+- **Durum:** kod ve testler tamamlandı; emülatörde uçtan uca doğrulandı. Gerçek telefon denemesi ve yayın kullanıcıda.
+- **Ne yapıldı:**
+  - Kaynak `releases?per_page=10` listesine geçti. Taslaklar hiç, ön sürümler yalnız "Test sürümlerini de al" açıkken sunuluyor.
+  - Sürüm notunda tek satır `versionCode: N` (veya etiket sonu `+N`) sürüm kodunu bildiriyor; satır notlarda gösterilmiyor. Seçim versionCode ile yapılıyor; APK'nın gerçek versionCode'u bildirilenle aynı olmalı. Bildirim yoksa eski etiket karşılaştırması.
+  - Kurulum `ACTION_VIEW` yerine `PackageInstaller` oturumuyla (her zaman kullanıcı onayı). Dosya oturuma yazılırken yeniden hash'leniyor; farklıysa oturum iptal. Sonuç alıcısı dışa kapalı; onay ekranı yalnız etkinlik öndeyken açılıyor. İptal → yeniden indirmeden "Tekrar Dene".
+  - GitHub hız sınırı (403/429, `x-ratelimit-reset`, `retry-after`) saklanıyor; süre bitene kadar istek gönderilmiyor, saat gösteriliyor (en çok 6 saat).
+  - "Güncellemeleri otomatik indir" (varsayılan kapalı): yalnız açılış denetiminde ve kotasız ağda indirir; kurulumu asla kendisi başlatmaz.
+  - Yeni izin: `ACCESS_NETWORK_STATE` (kotasız ağ denetimi). Debug'a özel `-PupdateTestServer=127.0.0.1:PORT` yerel GitHub taklidi; release'te her zaman boş.
+  - Room-first, Firebase yedekleme, JSON kurtarma ve Firestore kuralları değişmedi.
+  - Testler: birim 389/389 (21 yeni), smoke 39/39, kural emülatör testleri 25/25.
+  - Emülatörde: ön sürüm seçimi, kesilen indirme (3 deneme + Tekrar Dene), Android onay ekranı, iptal ve yeniden deneme, v1.4 (5) → v1.5-beta.1 (6) kurulumu; notlar, Room dosyaları, veri güvenliği günlüğü ve ayar dosyaları bayt bayt aynı. Yanlış SHA-256 ve farklı imza engellendi, dosya silindi, kurulum açılmadı. Hız sınırı, Wi-Fi kapalı açılış, otomatik indirme ve gerçek GitHub denetimi (güncel) doğrulandı. Emülatör eski hâline döndürüldü.
+  - Google Play Protect, Play dışı kurulan güncellemede "App scan recommended" gösterebiliyor ("Install without scanning" seçeneği var).
+- **Sonraki tek somut adım:** Kullanıcı onayıyla commit; ardından aynı sertifikayla imzalı, notunda `versionCode: N` satırı olan bir ön sürüm Release'iyle gerçek telefonda deneme.
+
+## 2026-11-06 — v1.4 Firebase bulut yedekleme ve telefon APK'sı
+
+- **Dal:** `feature/v14-updater-ux` (`ac11e96` üzerinde, commit/push/Release yok; `main` dokunulmadı)
+- **Durum:** kod ve testler tamamlandı (emülatörde Firebase Emulator Suite ile). Gerçek telefon testi ve Firebase Console ayarları kullanıcıda.
+- **Ne yapıldı:**
+  - Google ile oturum açma (Credential Manager + Firebase Auth) eklendi. Oturum açmadan uygulama ve notlar aynen çalışıyor.
+  - Yedekler Firestore'da `users/{uid}/backups/{id}` altında, 700 kB'lık en çok 8 parça hâlinde (5 MiB sınırı) tek atomik batch ile yazılıyor.
+  - Her yedek SHA-256 ile doğrulanıyor. Kullanıcı başına son 5 tamamlanmış yedek tutuluyor; eski yedekler yalnız yeni yedek sunucudan yeniden okunup doğrulandıktan sonra siliniyor.
+  - Firebase Storage kullanılmadı (Blaze planı gerektirir).
+  - Otomatik yedek: varsayılan kapalı, günde en çok bir kez ve yalnız içerik değiştiyse alınıyor.
+  - Geri yükleme mevcut içe aktarma önizlemesini, ImportStaging'i ve yalnız-ekleme birleştirmesini kullanıyor. Bu telefonda silinmiş notlar ancak kutu işaretlenirse geri geliyor.
+  - Room-first açıkken bulut işlemleri reddediliyor. Room şeması ve `tur_v10` biçimi değişmedi.
+  - Güvenlik kuralları `firebase/firestore.rules` içinde. Canlıya yüklenmedi.
+  - Testler: birim 368/368, smoke 39/39, kural emülatör testleri 25/25.
+  - Emülatörde uçtan uca doğrulananlar: oturum açma, yedekleme, saklama sınırı, bağlantısız deneme, yedek sırasında öldürme, geri yükleme önizlemesi ve çakışma, onaydan hemen sonra öldürme, otomatik yedek, oturum kapatma.
+  - Uçtan uca testlerden sonra emülatör verisi test öncesi anlık görüntüye döndürüldü.
+  - Android 17 (targetSdk 37) yerel ağ kısıtı yüzünden emülatör testi `adb reverse` ve `-PfirebaseEmulatorHost=127.0.0.1` ile yapılıyor; 10.0.2.2 uygulamadan erişilemiyor.
+  - Telefon APK'sı: Gemini anahtarı olmayan ayrı kopyadan release olarak derlendi ve v1.2/v1.3 ile aynı sertifikayla imzalandı (`versionCode 5`).
+- **Sonraki tek somut adım:** Firebase Console'da Google oturum açma sağlayıcısını açmak, Firestore veritabanını oluşturmak ve onaylanırsa `firestore.rules`'u yüklemek. Ardından APK'yı gerçek telefonda denemek.
+
 ## 2026-11-06 — P8 Room ana kaynak geçişi / izole prototip
 
 - **Dal:** `feature/room-migration-validation` (başlangıç `a4eba8e`, `main` dokunulmadı, push/merge yok)

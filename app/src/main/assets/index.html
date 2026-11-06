@@ -13,14 +13,15 @@
 <style>
 :root{
   --bg:#eef2f5;--surf:#fff;--surf2:#f5f7fa;--brd:#dde3ea;
-  --txt:#1a2332;--txt2:#4a5568;--txt3:#8896a7;
+  --txt:#1a2332;--txt2:#4a5568;--txt3:#5f6b7a;
   --acc:#d63031;--acc2:#e17055;--r:14px;--rsm:9px;
+  --btn-grad:linear-gradient(135deg,#d63031,#c0392b);--acc-txt:#b42324;--acc-soft:#fde4e2;
   --mar:#5B9BD5;--ege:#6BAE8C;--akd:#E8904A;
   --ic:#9B7FBF;--kar:#4F9E7C;--dog:#D4675A;--gun:#C49A2E;
   --sb:env(safe-area-inset-bottom,0px);
   --st:env(safe-area-inset-top,0px);
 }
-[data-theme=dark]{--bg:#0d1520;--surf:#182030;--surf2:#1f2d42;--brd:#263550;--txt:#ecf0f5;--txt2:#b8cce0;--txt3:#6a88a8;}
+[data-theme=dark]{--bg:#0d1520;--surf:#182030;--surf2:#1f2d42;--brd:#263550;--txt:#ecf0f5;--txt2:#b8cce0;--txt3:#9db0c6;--acc-txt:#ff8a80;--acc-soft:#3a1d22;}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif;background:var(--bg);color:var(--txt);display:flex;flex-direction:column;padding-top:var(--st)}
@@ -30,34 +31,54 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
 .hdr-l{display:flex;align-items:center;gap:10px;min-width:0}
 .hdr-l h1{font-size:16px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* DRAWER MENU */
-.drawer-ov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:none;opacity:0;transition:opacity .3s}
-.drawer-ov.open{display:block;opacity:1}
-.drawer{position:fixed;top:0;left:0;bottom:0;width:280px;background:var(--surf);z-index:3001;transform:translateX(-100%);transition:transform .3s cubic-bezier(.32,.72,0,1);display:flex;flex-direction:column;box-shadow:4px 0 20px rgba(0,0,0,.2)}
-.drawer.open{transform:translateX(0)}
-.drawer-h{padding:40px 20px 24px;background:linear-gradient(135deg,#1a2332,#243450);color:#fff}
-.drawer-h h2{font-size:18px;margin-bottom:0;letter-spacing:-.5px;font-family:'Segoe UI',Roboto,Helvetica,sans-serif;font-weight:800}
-.drawer-h p{display:none}
-.drawer-c{flex:1;padding:15px 10px;overflow-y:auto}
-.d-item{display:flex;align-items:center;gap:12px;padding:14px 15px;border-radius:10px;font-size:14px;font-weight:600;color:var(--txt2);cursor:pointer;transition:background .15s}
-.d-item:active{background:var(--surf2)}
-.d-item.on{background:var(--surf2);color:var(--acc)}
-.d-icon{font-size:18px;width:24px;text-align:center}
+/* APP SHELL: one view at a time above a four-tab bottom navigation */
+#app{flex:1;min-height:0;display:flex;flex-direction:column}
+.views{flex:1;min-height:0;position:relative}
+.view{position:absolute;inset:0}
+.view[hidden]{display:none}
+.page{padding:12px 12px 4px}
+.page-h{font-size:20px;font-weight:800;color:var(--txt);margin:0 0 10px;overflow-wrap:anywhere}
+.page-h:focus{outline:none}
+.page-h:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.bnav{flex-shrink:0;display:flex;background:var(--surf);border-top:1px solid var(--brd);padding-bottom:var(--sb);z-index:600;box-shadow:0 -2px 10px rgba(0,0,0,.06)}
+.bnav button{flex:1 1 0;min-width:0;min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;color:var(--txt2);font-size:12px;font-weight:700;font-family:inherit;padding:4px 2px;cursor:pointer}
+.bnav .ico{position:relative;font-size:20px;line-height:1;padding:4px 16px;border-radius:999px}
+.bnav .ico .bdg{position:absolute;top:-6px;right:2px;font-size:10px}
+.bnav .lbl{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bnav.tight button{padding:4px 0}
+.bnav.tight .lbl{font-size:10px;letter-spacing:-.2px}
+.bnav button[aria-current=page]{color:var(--acc-txt)}
+.bnav button[aria-current=page] .ico{background:var(--acc-soft)}
+.bnav button:focus-visible{outline:3px solid var(--acc);outline-offset:-3px}
+@media(max-width:340px){.bnav .ico{padding:4px 10px}}
+.seg{display:flex;flex-wrap:wrap;gap:4px;padding:4px;background:var(--surf2);border:1px solid var(--brd);border-radius:12px;margin-bottom:10px}
+.seg button{flex:1 1 auto;min-height:48px;padding:0 10px;border:none;border-radius:9px;background:none;font-size:14px;font-weight:700;font-family:inherit;color:var(--txt2);cursor:pointer}
+.seg button[aria-pressed=true],.seg button[aria-checked=true]{background:var(--surf);color:var(--txt);box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.spinner{width:28px;height:28px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none}}
 
-/* HELP SECTION */
-.drawer-help{padding:20px 15px;border-top:1px solid var(--brd);margin-top:auto}
-.help-title{font-size:11px;font-weight:700;color:var(--txt3);text-transform:uppercase;margin-bottom:12px;padding-left:5px}
-.help-item{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;font-size:12px;color:var(--txt2);line-height:1.4}
-.help-icon{font-size:14px;width:20px;flex-shrink:0;text-align:center;background:var(--surf2);border-radius:5px;padding:2px}
-
-/* MAP */
-.hdr-r{display:flex;gap:5px;flex-shrink:0}
-.abtn{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:15px;width:34px;height:34px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s;flex-shrink:0}
-.abtn:active{background:rgba(255,255,255,.25)}
+/* MAP VIEW: full-size map, 48px tools, "+ Not Ekle" */
+#view-map .map-wrap{position:absolute;inset:0;margin:0;height:auto;min-height:0;max-height:none;border-radius:0;box-shadow:none}
+.map-tools{position:absolute;top:12px;right:12px;z-index:550;display:flex;flex-direction:column;gap:8px}
+.map-tool{width:48px;height:48px;border-radius:50%;border:1px solid var(--brd);background:var(--surf);color:var(--txt);font-size:20px;font-weight:700;font-family:inherit;box-shadow:0 2px 10px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.map-fab{position:absolute;right:12px;bottom:28px;z-index:550;min-height:56px;max-width:calc(100% - 24px);padding:0 20px;border:none;border-radius:16px;background:var(--btn-grad);color:#fff;font-size:16px;font-weight:800;font-family:inherit;display:inline-flex;align-items:center;gap:8px;box-shadow:0 6px 18px rgba(214,48,49,.4);cursor:pointer;transition:transform .2s}
+.map-fab span[aria-hidden]{font-size:22px;line-height:1}
+body.undo-on .map-fab{transform:translateY(-72px)}
+.map-err{position:absolute;inset:0;z-index:520;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--bg)}
+.map-err[hidden]{display:none}
+.map-err-card{max-width:340px;background:var(--surf);border:1px solid var(--brd);border-radius:var(--r);padding:18px;text-align:center;display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 18px rgba(16,24,40,.14)}
+.map-err-card strong{font-size:17px;color:var(--txt)}
+.map-err-card p{font-size:14px;color:var(--txt2);line-height:1.5}
+.map-err-card .city-btn,.pick-bd .city-btn{flex:none}
+#view-map.map-off #zoomIn,#view-map.map-off #zoomOut{display:none}
+@media(max-height:420px){.map-tools{flex-direction:row}}
 
 /* MAP */
 .map-wrap{flex:0 0 auto;height:50vw;min-height:190px;max-height:290px;position:relative;margin:8px;border-radius:var(--r);overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.12)}
-#map{width:100%;height:100%;background:#cfe4f5}
+#map{width:100%;height:100%;background:#cfe4f5;isolation:isolate}
+[data-theme=dark] #map{background:#1b2a3d}
 
 /* Leaflet */
 .leaflet-container{font-family:inherit}
@@ -79,10 +100,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
 /* Not pin */
 .note-pin-wrap{background:none!important;border:none!important}
 .note-pin{
-  width:20px;height:20px;background:var(--acc);
-  border:2.5px solid #fff;border-radius:50%;
+  width:32px;height:32px;background:var(--acc);
+  border:3px solid #fff;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
-  font-size:9px;font-weight:800;color:#fff;
+  font-size:13px;font-weight:800;color:#fff;
   box-shadow:0 2px 6px rgba(0,0,0,.4);
   transform:translate(-50%,-50%);cursor:pointer;pointer-events:all!important;
   transition:transform .1s;
@@ -105,38 +126,39 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
 .sch{padding:8px 8px 4px}
 .sch-inner{display:flex;align-items:center;gap:8px;background:var(--surf);border:1.5px solid var(--brd);border-radius:var(--rsm);padding:0 12px;transition:border-color .15s}
 .sch-inner:focus-within{border-color:var(--acc)}
-.sch-inner input{flex:1;padding:9px 0;border:none;background:transparent;color:var(--txt);font-size:14px;outline:none;font-family:inherit}
+.sch-inner input{flex:1;min-width:0;min-height:46px;padding:9px 0;border:none;background:transparent;color:var(--txt);font-size:15px;outline:none;font-family:inherit}
 .sch-icon{color:var(--txt3);font-size:14px;flex-shrink:0}
 
 /* NOTES */
 .sum{padding:4px 8px}
-.sh2{font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:7px;display:flex;align-items:center;gap:6px}
-.bdg{background:var(--acc);color:#fff;font-size:10px;font-weight:700;border-radius:20px;padding:1px 6px}
+.sh2{font-size:12px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.7px;margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.bdg{background:#c0392b;color:#fff;font-size:12px;font-weight:700;border-radius:20px;padding:1px 6px}
 .emp{background:var(--surf);border:1.5px dashed var(--brd);border-radius:var(--r);padding:22px 16px;text-align:center;color:var(--txt3);font-size:13px;line-height:1.7;margin-top:4px}
 .eico{font-size:26px;display:block;margin-bottom:6px}
-.sort-row{display:flex;gap:5px;margin-bottom:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.sort-row{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;padding-bottom:2px}
 .sort-row::-webkit-scrollbar{display:none}
-.sort-btn{background:var(--surf);border:1px solid var(--brd);padding:4px 10px;border-radius:20px;font-size:10px;cursor:pointer;color:var(--txt2);font-family:inherit;white-space:nowrap;flex-shrink:0;transition:all .12s}
+.sort-btn{background:var(--surf);border:1px solid var(--brd);min-height:48px;padding:0 14px;border-radius:24px;font-size:13px;cursor:pointer;color:var(--txt2);font-family:inherit;white-space:nowrap;flex-shrink:0;transition:all .12s}
 .sort-btn.on{background:var(--txt);color:var(--surf);border-color:var(--txt)}
-.cc{background:var(--surf);border:1px solid var(--brd);border-left-width:4px;border-radius:var(--rsm);padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:all .12s}
+.cc{width:100%;min-height:56px;text-align:left;font-family:inherit;color:inherit;background:var(--surf);border:1px solid var(--brd);border-left-width:4px;border-radius:var(--rsm);padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:all .12s}
 .cc:active{background:var(--surf2);transform:scale(.99)}
 .ccl{display:flex;align-items:center;gap:8px;min-width:0}
-.cn{font-size:14px;font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cr{font-size:10px;color:var(--txt3);margin-top:1px}
+.ccl>span{min-width:0}
+.cn{display:block;font-size:15px;font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cr{display:block;font-size:12px;color:var(--txt3);margin-top:1px}
 .cct{display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;margin-left:8px}
-.cnum{font-size:20px;font-weight:800;color:var(--acc);line-height:1}
-.clb{font-size:9px;color:var(--txt3);margin-top:1px}
+.cnum{display:block;font-size:20px;font-weight:800;color:var(--acc-txt);line-height:1}
+.clb{display:block;font-size:12px;color:var(--txt3);margin-top:1px}
 
 /* STATS */
 .stats-wrap{padding:8px 8px 20px}
 .stat-cards{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}
 .stat-card{background:var(--surf);border:1px solid var(--brd);border-radius:var(--rsm);padding:12px 10px;text-align:center}
 .stat-num{font-size:26px;font-weight:800;color:var(--acc);line-height:1}
-.stat-lbl{font-size:10px;color:var(--txt3);margin-top:3px}
-.chart-title{font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.6px;margin:10px 0 6px}
+.stat-lbl{font-size:12px;color:var(--txt3);margin-top:3px}
+.chart-title{font-size:12px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.6px;margin:12px 0 6px}
 .bar-chart{display:flex;flex-direction:column;gap:5px}
 .bar-row{display:flex;align-items:center;gap:6px}
-.bar-label{width:76px;text-align:right;color:var(--txt2);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.bar-label{width:92px;text-align:right;color:var(--txt2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
 .bar-track{flex:1;background:var(--surf2);border-radius:4px;height:16px;overflow:hidden;border:1px solid var(--brd)}
 .bar-fill{height:100%;border-radius:4px;transition:width .4s;display:flex;align-items:center;padding-left:5px;font-size:9px;color:#fff;font-weight:700}
 .pie-wrap{display:flex;flex-direction:column;gap:5px}
@@ -146,11 +168,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
 /* BACKUP */
 .backup-wrap{padding:8px 8px 20px;display:flex;flex-direction:column;gap:8px}
 .bk-card{background:var(--surf);border:1px solid var(--brd);border-radius:var(--rsm);padding:13px 14px}
-.bk-title{font-size:13px;font-weight:700;color:var(--txt);margin-bottom:3px}
-.bk-desc{font-size:11px;color:var(--txt3);margin-bottom:9px;line-height:1.5}
-.bk-btn{width:100%;padding:10px;border:none;border-radius:var(--rsm);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity .12s}
+.bk-title{font-size:15px;font-weight:700;color:var(--txt);margin-bottom:3px}
+.bk-desc{font-size:13px;color:var(--txt3);margin-bottom:9px;line-height:1.5}
+.bk-btn{width:100%;min-height:48px;padding:10px;border:none;border-radius:var(--rsm);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity .12s}
 .bk-btn:active{opacity:.8}
-.bk-btn.primary{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff}
+.bk-btn.primary{background:var(--btn-grad);color:#fff}
 .bk-btn.secondary{background:var(--surf2);color:var(--txt);border:1px solid var(--brd)}
 .bk-btn.danger{background:#fee2e2;color:#c0392b;border:1px solid #fca5a5}
 [data-theme=dark] .bk-btn.danger{background:#3d1010;color:#ff6b6b;border-color:#7a2020}
@@ -179,18 +201,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-seri
 .ds-tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--surf2);color:var(--txt);border:1px solid var(--brd)}
 .ds-tag.warn{background:#fdebd0;color:#7e3a00;border-color:#f0b27a}
 [data-theme=dark] .ds-tag.warn{background:#4a2a0a;color:#f8c471;border-color:#7e5109}
-.ds-btn{min-height:44px;font-size:14px}
+.ds-btn{min-height:48px;font-size:14px}
 .ds-actions{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
 .ds-batch{border-top:1px solid var(--brd);padding-top:10px;margin-top:4px}
-.ds-batch summary{font-size:13px;font-weight:700;color:var(--txt);min-height:44px;display:flex;align-items:center;cursor:pointer}
-.ds-check{display:flex;align-items:flex-start;gap:10px;font-size:13px;color:var(--txt);line-height:1.45;padding:8px 0;cursor:pointer}
+.ds-batch summary{font-size:13px;font-weight:700;color:var(--txt);min-height:48px;display:flex;align-items:center;cursor:pointer}
+.ds-check{display:flex;align-items:flex-start;gap:10px;min-height:48px;font-size:13px;color:var(--txt);line-height:1.45;padding:12px 0;cursor:pointer}
+.ds-check[hidden]{display:none}
 .ds-check input{width:22px;height:22px;flex-shrink:0;margin-top:1px;accent-color:var(--acc)}
 .ds-hist{list-style:none;display:flex;flex-direction:column;gap:6px}
 .ds-hist li{border:1px solid var(--brd);border-radius:var(--rsm);padding:8px 10px;font-size:12px;color:var(--txt2);line-height:1.45;overflow-wrap:anywhere}
 .ds-hist li strong{color:var(--txt)}
+.cloud-list:empty{display:none}
+.cloud-list li{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.cloud-list .bk-btn{min-height:48px;font-size:13px}
+#cloudList{margin:8px 0}
 .ds-sub{font-size:12px;font-weight:700;color:var(--txt);margin:12px 0 6px}
 .ds-dlg h3{overflow-wrap:anywhere}
-.rf-bar{position:fixed;left:8px;right:8px;bottom:calc(8px + var(--sb,0px));z-index:2600;max-width:420px;margin:0 auto;background:#1f3b57;color:#fff;font-size:12px;font-weight:600;line-height:1.4;padding:8px 12px;border-radius:var(--rsm);box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none}
+.rf-bar{position:fixed;left:8px;right:8px;bottom:calc(76px + var(--sb,0px));z-index:2600;max-width:420px;margin:0 auto;background:#1f3b57;color:#fff;font-size:12px;font-weight:600;line-height:1.4;padding:8px 12px;border-radius:var(--rsm);box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none}
 .rf-bar.err{background:#922b21}
 body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
 #roomFirstDev .ds-btn:disabled{opacity:.45;cursor:not-allowed}
@@ -225,64 +252,74 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
 .mci{display:flex;align-items:center;gap:9px;min-width:0}
 .mdot{width:13px;height:13px;border-radius:50%;flex-shrink:0}
 .mname{font-size:18px;font-weight:800;color:var(--txt);letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mreg{font-size:10px;color:var(--txt3);margin-top:1px}
-.mcl{width:30px;height:30px;border:none;background:var(--surf2);border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--txt2);flex-shrink:0}
+.mname:focus{outline:none}
+.mname:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.mreg{font-size:13px;color:var(--txt3);margin-top:1px}
+.mcl{width:48px;height:48px;border:none;background:var(--surf2);border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--txt2);flex-shrink:0}
+.city-acts{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px;border-bottom:1px solid var(--brd)}
+.city-btn{flex:1 1 130px;min-height:48px;padding:0 14px;border-radius:var(--rsm);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.city-btn.primary{background:var(--btn-grad);color:#fff;border:none}
+.city-btn.secondary{background:var(--surf2);color:var(--txt);border:1px solid var(--brd)}
+.mfrm[hidden]{display:none}
+.mfrm-acts{display:flex;flex-wrap:wrap;gap:8px}
+.mfrm-acts .badd{flex:2 1 160px}
+.mfrm-acts .city-btn{flex:1 1 100px}
 
 /* City meta */
-.city-meta{display:flex;gap:0;border-bottom:1px solid var(--brd);background:var(--surf2);overflow-x:auto;scrollbar-width:none}
+.city-meta{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--brd);background:var(--surf2)}
 .city-meta::-webkit-scrollbar{display:none}
-.city-meta-item{flex:1;min-width:58px;display:flex;flex-direction:column;align-items:center;padding:8px 4px;border-right:1px solid var(--brd)}
+.city-meta-item{flex:1 1 72px;min-width:0;display:flex;flex-direction:column;align-items:center;padding:8px 4px;border-right:1px solid var(--brd)}
 .city-meta-item:last-child{border-right:none}
-.city-meta-val{font-size:11px;font-weight:700;color:var(--txt);text-align:center;line-height:1.2}
-.city-meta-lbl{font-size:9px;color:var(--txt3);margin-top:2px;text-align:center}
+.city-meta-val{font-size:13px;font-weight:700;color:var(--txt);text-align:center;line-height:1.2}
+.city-meta-lbl{font-size:12px;color:var(--txt3);margin-top:2px;text-align:center}
 
 /* Weather */
 .wx-wrap{padding:9px 14px;border-bottom:1px solid var(--brd);background:linear-gradient(135deg,var(--surf2),var(--surf))}
-.wx-loading{font-size:11px;color:var(--txt3);display:flex;align-items:center;gap:6px}
+.wx-loading{font-size:13px;color:var(--txt3);display:flex;align-items:center;gap:6px}
 .wx-card{display:flex;align-items:center;gap:10px}
 .wx-icon{font-size:24px;line-height:1;flex-shrink:0}
 .wx-temp{font-size:24px;font-weight:800;color:var(--txt);line-height:1;flex-shrink:0}
 .wx-right{flex:1;min-width:0}
 .wx-desc{font-size:12px;color:var(--txt2);font-weight:600}
-.wx-details{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px;font-size:10px;color:var(--txt3)}
-.wx-err{font-size:11px;color:var(--txt3)}
+.wx-details{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px;font-size:12px;color:var(--txt3)}
+.wx-err{font-size:13px;color:var(--txt3)}
 
 /* Form */
 .mfrm{padding:12px 14px;border-bottom:1px solid var(--brd);background:var(--surf2)}
-.mfrm-title{font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:9px}
-.cats{display:flex;gap:5px;margin-bottom:9px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
-.cats::-webkit-scrollbar{display:none}
-.cat{background:var(--surf);border:1.5px solid var(--brd);padding:5px 10px;border-radius:var(--rsm);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;color:var(--txt);transition:all .12s;flex-shrink:0}
+.mfrm-title{font-size:13px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.7px;margin-bottom:9px}
+.cats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px;padding-bottom:2px}
+.cat{background:var(--surf);border:1.5px solid var(--brd);min-height:48px;padding:0 12px;border-radius:var(--rsm);font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;color:var(--txt);transition:all .12s;flex-shrink:0}
 .cat.sel{background:var(--txt);color:var(--surf);border-color:var(--txt)}
-[data-theme=dark] .cat.sel{background:#e17055;border-color:#e17055;color:#fff}
+[data-theme=dark] .cat.sel{background:#e17055;border-color:#e17055;color:#1a2332}
 .ff{margin-bottom:8px}
-.ff label{display:block;font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:3px}
-.ff input,.ff textarea{width:100%;border:1.5px solid var(--brd);border-radius:var(--rsm);padding:9px 11px;font-size:15px;font-family:inherit;color:var(--txt);background:var(--surf);outline:none;transition:border-color .15s;-webkit-appearance:none}
+.ff label{display:block;font-size:13px;font-weight:600;color:var(--txt2);margin-bottom:3px}
+.ff input,.ff textarea{width:100%;min-height:48px;border:1.5px solid var(--brd);border-radius:var(--rsm);padding:9px 11px;font-size:16px;font-family:inherit;color:var(--txt);background:var(--surf);outline:none;transition:border-color .15s;-webkit-appearance:none}
 .ff input:focus,.ff textarea:focus{border-color:var(--acc)}
 .ff textarea{resize:vertical;min-height:80px;line-height:1.5}
-.star-row{display:flex;align-items:center;gap:5px;margin-bottom:9px}
-.star{font-size:22px;cursor:pointer;opacity:.25;transition:opacity .1s,transform .1s;line-height:1;flex-shrink:0}
+.star-row{display:flex;flex-wrap:wrap;align-items:center;gap:0;margin-bottom:9px}
+.star{font-size:24px;cursor:pointer;opacity:.3;transition:opacity .1s,transform .1s;line-height:1;flex-shrink:0;min-width:48px;min-height:48px;padding:0;border:none;background:none;color:#c27c00;font-family:inherit;border-radius:10px}
+[data-theme=dark] .star{color:#f5b942}
 .star.on{opacity:1}
 .star:active{transform:scale(1.25)}
-#starLabel{font-size:11px;color:var(--txt3);margin-left:4px}
-.color-row{display:flex;align-items:center;gap:8px;margin-bottom:9px}
-.color-lbl{font-size:11px;font-weight:600;color:var(--txt2)}
-.color-opt{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all .1s;flex-shrink:0}
-.color-opt.sel{border-color:var(--txt);transform:scale(1.15)}
-.badd{width:100%;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;border:none;border-radius:var(--rsm);padding:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .12s,transform .1s}
+#starLabel{font-size:13px;color:var(--txt3);margin-left:4px}
+.color-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:9px}
+.color-lbl{font-size:13px;font-weight:600;color:var(--txt2);flex-basis:100%}
+.color-opt{width:48px;height:48px;border-radius:50%;cursor:pointer;border:2px solid var(--brd);transition:all .1s;flex-shrink:0;padding:0;font-family:inherit}
+.color-opt.sel{border-color:var(--txt);box-shadow:0 0 0 2px var(--surf),0 0 0 4px var(--txt)}
+.badd{width:100%;min-height:48px;background:var(--btn-grad);color:#fff;border:none;border-radius:var(--rsm);padding:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .12s,transform .1s}
 .badd:active{opacity:.85;transform:scale(.99)}
 
 /* Note items */
 .mnts{padding:12px 14px 20px}
-.mnts-title{font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.mnts-title{font-size:13px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
 .ni{border:1.5px solid var(--brd);border-left-width:4px;border-radius:var(--rsm);padding:11px 12px;margin-bottom:8px;background:var(--surf)}
 .nih{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px}
 .nit{font-size:14px;font-weight:700;color:var(--txt);line-height:1.3;flex:1;min-width:0}
-.nid{font-size:10px;color:var(--txt3);flex-shrink:0;margin-top:2px;white-space:nowrap}
+.nid{font-size:12px;color:var(--txt3);flex-shrink:0;margin-top:2px;white-space:nowrap}
 .nic{font-size:13px;color:var(--txt2);line-height:1.6;margin-top:3px;word-break:break-word}
 .nstars{font-size:12px;margin-top:4px;letter-spacing:1px}
 .nacts{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
-.nbtn{background:var(--surf2);border:1px solid var(--brd);padding:5px 9px;border-radius:6px;font-size:11px;cursor:pointer;color:var(--txt2);font-family:inherit;display:flex;align-items:center;gap:3px;white-space:nowrap}
+.nbtn{background:var(--surf2);border:1px solid var(--brd);min-height:48px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;color:var(--txt2);font-family:inherit;display:flex;align-items:center;gap:4px;white-space:nowrap}
 .nbtn:active{opacity:.7}
 .nbtn.del{color:var(--acc)}
 .nemp{text-align:center;color:var(--txt3);font-size:13px;padding:20px 0;line-height:1.7}
@@ -293,13 +330,38 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
 .sub-box{background:var(--surf);border-radius:var(--r);padding:16px;width:100%;max-width:440px;max-height:85vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);animation:slideUp .22s cubic-bezier(.32,.72,0,1)}
 .sub-box h3{font-size:15px;font-weight:700;margin-bottom:12px;color:var(--txt)}
 .sub-row{display:flex;gap:8px;margin-top:10px}
-.sub-row button{flex:1;padding:11px;border:none;border-radius:var(--rsm);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.sub-row button{flex:1;min-height:48px;padding:11px;border:none;border-radius:var(--rsm);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
 .sub-row .ok{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff}
+.sub-box:not(.upd-dlg) .sub-row .ok{background:var(--btn-grad)}
 .sub-row .cancel{background:var(--surf2);color:var(--txt);border:1px solid var(--brd)}
+.edit-del{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:48px;margin-top:14px;background:none;border:1.5px solid #e6a5a0;border-radius:var(--rsm);color:#b03a2e;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer}
+.edit-del-wrap{margin-top:14px;padding-top:2px;border-top:1px solid var(--brd)}
+[data-theme=dark] .edit-del{color:#ff8a80;border-color:#7a2020}
+.del-dlg{max-width:380px}
+.del-dlg p+p{margin-top:8px}
+.bk-status{font-size:13px;line-height:1.5;color:var(--txt2);margin-top:8px;overflow-wrap:anywhere}
+.bk-status:empty{display:none}
+.bk-status+.bk-btn{margin-top:8px}
+.bk-status[data-kind=ok]{color:#1e7d43}
+.bk-status[data-kind=error]{color:#b03a2e}
+[data-theme=dark] .bk-status[data-kind=ok]{color:#7bd88f}
+[data-theme=dark] .bk-status[data-kind=error]{color:#ff8a80}
+.del-dlg p{font-size:14px;line-height:1.5;color:var(--txt2);overflow-wrap:anywhere}
+.del-dlg .sub-row{flex-wrap:wrap}
+.del-dlg .sub-row button{flex:1 1 120px;min-height:48px}
+.sub-row .del-ok{background:#b03a2e;color:#fff}
+.undo-bar{position:fixed;left:12px;right:12px;bottom:calc(76px + var(--sb));z-index:3900;max-width:480px;margin:0 auto;display:flex;align-items:center;gap:10px;background:#1a2332;color:#fff;border-radius:12px;padding:6px 6px 6px 16px;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+.undo-bar[hidden]{display:none}
+.undo-bar span{flex:1;min-width:0;font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+.undo-bar button{flex-shrink:0;min-height:48px;min-width:48px;padding:0 16px;background:none;border:none;border-radius:8px;color:#ffd166;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer}
+.undo-bar button:focus-visible{outline:2px solid #ffd166;outline-offset:1px}
+body.undo-on .toast{bottom:calc(144px + var(--sb))}
+body.undo-on .toast:not(.show){visibility:hidden}
 
 /* PWA */
 .pwa-banner{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#1a2332,#243450);color:#fff;padding:12px 16px calc(12px + var(--sb));display:flex;align-items:center;gap:10px;z-index:1500;box-shadow:0 -4px 20px rgba(0,0,0,.3);transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1)}
 .pwa-banner.show{transform:translateY(0)}
+.pwa-banner:not(.show){visibility:hidden}
 .pwa-icon{font-size:26px;flex-shrink:0}
 .pwa-txt{flex:1;min-width:0}
 .pwa-txt strong{display:block;font-size:13px;font-weight:700}
@@ -308,11 +370,12 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
 .pwa-close{background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;padding:4px;flex-shrink:0}
 
 /* Offline */
-.offline-bar{position:fixed;top:var(--st);left:0;right:0;background:#f59e0b;color:#fff;text-align:center;font-size:11px;font-weight:600;padding:5px 12px;z-index:700;display:none}
+.offline-bar{flex-shrink:0;background:#8a4b00;color:#fff;text-align:center;font-size:13px;font-weight:600;line-height:1.4;padding:6px 12px;display:none}
 .offline-bar.show{display:block}
 
 /* Toast */
-.toast{position:fixed;bottom:calc(20px + var(--sb));left:50%;transform:translateX(-50%) translateY(80px);background:#1a2332;color:#fff;border-radius:22px;padding:9px 18px;font-size:13px;font-weight:600;z-index:4000;pointer-events:none;white-space:nowrap;transition:transform .25s cubic-bezier(.32,.72,0,1);box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:calc(100vw - 32px);overflow:hidden;text-overflow:ellipsis}
+.toast{position:fixed;bottom:calc(80px + var(--sb));left:50%;transform:translateX(-50%) translateY(160px);background:#1a2332;color:#fff;border-radius:22px;padding:9px 18px;font-size:14px;font-weight:600;line-height:1.4;text-align:center;z-index:4000;pointer-events:none;width:max-content;transition:transform .25s cubic-bezier(.32,.72,0,1);box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:calc(100vw - 32px);overflow-wrap:anywhere}
+.toast:not(.show){visibility:hidden}
 .toast.show{transform:translateX(-50%) translateY(0)}
 
 /* Centered Loading Overlay */
@@ -320,19 +383,81 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
 .loading-box{background:var(--surf);padding:24px;border-radius:var(--r);display:flex;flex-direction:column;align-items:center;gap:15px;box-shadow:0 8px 32px rgba(0,0,0,0.4);min-width:140px}
 .loading-box span{font-weight:700;color:var(--txt);font-size:14px}
 
-/* In-app update */
-.upd-banner{position:fixed;left:12px;right:12px;top:calc(62px + var(--st));z-index:3400;background:var(--surf);border:1px solid var(--brd);border-radius:var(--r);padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,.28);display:none;flex-direction:column;gap:8px}
-.upd-banner.show{display:flex}
-.upd-top{display:flex;align-items:center;gap:10px}
-.upd-copy{flex:1;min-width:0}
-.upd-copy strong{display:block;font-size:13px;font-weight:800;color:var(--txt);line-height:1.35}
-.upd-status{display:block;margin-top:2px;font-size:11px;color:var(--txt3);line-height:1.4}
-.upd-track{height:8px;background:var(--surf2);border:1px solid var(--brd);border-radius:99px;overflow:hidden}
+/* In-app update: "Neler Yeni?" dialog. The WebView already applies the system font scale to px sizes. */
+.upd-ov{z-index:3400;padding:12px max(12px,var(--sb,0px))}
+.upd-dlg{display:flex;flex-direction:column;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow:hidden;font-size:14px}
+.upd-dlg .upd-ver{font-size:12px;font-weight:700;color:var(--acc);margin-bottom:2px;overflow-wrap:anywhere}
+.upd-dlg h3{font-size:17px;margin-bottom:8px;overflow-wrap:anywhere}
+.upd-dlg h3:focus{outline:none}
+.upd-dlg h3:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.upd-notes{flex:1 1 auto;min-height:60px;overflow-y:auto;overscroll-behavior:contain;border:1px solid var(--brd);border-radius:var(--rsm);padding:10px 12px;background:var(--surf2);color:var(--txt);line-height:1.55;overflow-wrap:anywhere}
+.upd-notes:focus{outline:none}
+.upd-notes:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.upd-notes p{white-space:pre-line}
+.upd-notes h3,.upd-notes h4{font-size:1.05em;font-weight:800;margin:.6em 0 .3em;color:var(--txt)}
+.upd-notes h3:first-child,.upd-notes h4:first-child{margin-top:0}
+.upd-notes p,.upd-notes ul,.upd-notes ol,.upd-notes pre,.upd-notes blockquote{margin:0 0 .6em}
+.upd-notes ul,.upd-notes ol{padding-left:1.3em}
+.upd-notes li{margin-bottom:.25em}
+.upd-notes code,.upd-notes pre{font-family:monospace;font-size:.9em;background:var(--surf);border-radius:4px;padding:0 3px;word-break:break-all}
+.upd-notes pre{white-space:pre-wrap;padding:6px 8px}
+.upd-notes blockquote{border-left:3px solid var(--brd);padding-left:8px;color:var(--txt2)}
+.upd-notes hr{border:none;border-top:1px solid var(--brd);margin:.6em 0}
+.upd-notes .rn-url{color:var(--txt3);font-size:.85em;word-break:break-all}
+.upd-notes .rn-empty{color:var(--txt3);font-style:italic}
+.upd-track{height:10px;margin-top:10px;background:var(--surf2);border:1px solid var(--brd);border-radius:99px;overflow:hidden}
 .upd-fill{height:100%;width:0;background:linear-gradient(135deg,var(--acc),var(--acc2));border-radius:99px;transition:width .2s}
 .upd-fill.unk{width:35%;animation:updSlide 1.1s ease-in-out infinite}
 @keyframes updSlide{0%{transform:translateX(-120%)}100%{transform:translateX(320%)}}
-.upd-action{border:none;border-radius:var(--rsm);padding:8px 12px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;flex-shrink:0}
-.upd-action:active{opacity:.85}
+@media (prefers-reduced-motion:reduce){.upd-fill{transition:none}.upd-fill.unk{animation:none;width:100%;opacity:.5}}
+.upd-dlg .upd-status{font-size:13px;color:var(--txt2);line-height:1.5;margin:8px 0 0;overflow-wrap:anywhere}
+.upd-dlg .upd-status.err{color:#c0392b;font-weight:600}
+[data-theme=dark] .upd-dlg .upd-status.err{color:#f1948a}
+.upd-dlg .upd-row{flex-wrap:wrap;flex-shrink:0}
+.upd-dlg .upd-row button{flex:1 1 130px;min-height:48px;font-size:14px}
+/* Narrow screens stack .sub-row buttons; the 130px basis must not become their height. */
+@media(max-width:360px){.upd-dlg .upd-row button{flex:0 0 auto}}
+/* Short screens (landscape, large text): one scroll for the whole dialog, buttons stay reachable. */
+@media(max-height:500px){
+  .upd-dlg{overflow-y:auto;overscroll-behavior:contain}
+  .upd-notes{flex:none;overflow:visible}
+  .upd-dlg .upd-row{position:sticky;bottom:-16px;margin:10px -16px -16px;padding:10px 16px 16px;background:var(--surf);border-top:1px solid var(--brd)}
+}
+
+/* SETTINGS */
+.set-h{font-size:13px;font-weight:800;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin:18px 2px 8px}
+.set-hint{font-size:13px;color:var(--txt3);line-height:1.5;margin:0 2px 8px}
+.set-list{background:var(--surf);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden}
+.set-row{width:100%;display:flex;align-items:center;gap:12px;min-height:56px;padding:10px 14px;border:none;border-top:1px solid var(--brd);background:none;text-align:left;font-size:15px;font-family:inherit;color:var(--txt);cursor:pointer}
+.set-list>.set-row:first-child{border-top:none}
+.set-row:active{background:var(--surf2)}
+.set-row.static{cursor:default}
+.set-row.static:active{background:none}
+.set-ico{font-size:20px;width:28px;text-align:center;flex-shrink:0}
+.set-txt{flex:1;min-width:0}
+.set-txt strong{display:block;font-weight:700;overflow-wrap:anywhere}
+.set-txt span{display:block;font-size:13px;color:var(--txt3);margin-top:1px;line-height:1.4}
+.set-row .bdg{margin-left:auto;flex-shrink:0}
+.set-row[hidden]{display:none}
+.set-chk{width:22px;height:22px;margin:0 3px;flex-shrink:0;accent-color:var(--acc)}
+.set-tag{flex-shrink:0;font-size:12px;font-weight:800;padding:2px 8px;border-radius:999px;background:var(--surf2);border:1px solid var(--brd);color:var(--txt2)}
+.set-tag[hidden]{display:none}
+.set-help{border-top:1px solid var(--brd)}
+.set-help summary{min-height:56px;display:flex;align-items:center;gap:12px;padding:10px 14px;font-size:15px;font-weight:700;color:var(--txt);cursor:pointer}
+.set-help ul{list-style:none;padding:0 14px 12px;display:flex;flex-direction:column;gap:10px}
+.set-help li{font-size:14px;color:var(--txt2);line-height:1.5}
+.set-help li strong{color:var(--txt)}
+
+/* CITY PICKER: "+ Not Ekle" without aiming at the map */
+.modal.pick{display:flex;flex-direction:column;height:calc(92vh - var(--st));overflow:hidden}
+.pick-bd{padding:12px 14px 4px;display:flex;flex-direction:column;gap:10px;flex-shrink:0}
+.pick-list{list-style:none;flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 14px 16px}
+.pick-row{width:100%;display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 6px;border:none;border-bottom:1px solid var(--brd);background:none;text-align:left;font-family:inherit;color:var(--txt);cursor:pointer}
+.pick-row:active{background:var(--surf2)}
+.pick-name{font-size:16px;font-weight:700;flex:1;min-width:0;overflow-wrap:anywhere}
+.pick-sub{font-size:13px;color:var(--txt3);text-align:right}
+.pick-empty{padding:16px 4px;color:var(--txt3);font-size:14px}
+@media(max-height:500px){.modal.pick{height:auto;overflow-y:auto}.pick-list{overflow:visible;flex:none}.bnav button{min-height:48px;flex-direction:row;gap:6px}.bnav .ico{padding:2px 6px}}
 
 /* Responsive */
 @media(min-width:600px){.map-wrap{max-height:340px;height:32vw}.stat-cards{grid-template-columns:repeat(4,1fr)}}
@@ -340,77 +465,55 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
 </style>
 </head>
 <body>
-<div class="offline-bar" id="offlineBar">📡 Çevrimdışı — notlarınız çalışmaya devam ediyor</div>
-
-<div class="drawer-ov" id="drOv"></div>
-<div class="drawer" id="drawer">
-  <div class="drawer-h">
-    <h2>Türkiye Şehir Notları</h2>
-    <p>Türkiye Gezi Günlüğünüz</p>
-  </div>
-  <div class="drawer-c">
-    <div class="d-item on" data-target="notes"><span class="d-icon">📋</span> Notlar</div>
-    <div class="d-item" data-target="favs"><span class="d-icon">❤️</span> Favoriler</div>
-    <div class="d-item" data-target="stats"><span class="d-icon">📊</span> İstatistikler</div>
-    <div class="d-item" data-target="backup"><span class="d-icon">💾</span> Veri ve Yedek <span class="bdg" id="dsBadge" hidden></span></div>
-  </div>
-
-  <div class="drawer-help">
-    <div class="help-title">İkon Açıklamaları</div>
-    <div class="help-item">
-      <span class="help-icon">📍</span>
-      <div><strong>Konum:</strong> Bulunduğunuz şehri haritada bulur ve not ekranını açar.</div>
-    </div>
-    <div class="help-item">
-      <span class="help-icon">✨</span>
-      <div><strong>PDF Analizi:</strong> Bir PDF dosyasını yapay zeka ile özetleyip nota dönüştürür.</div>
-    </div>
-    <div class="help-item">
-      <span class="help-icon">🎤</span>
-      <div><strong>Sesli Not:</strong> Konuşmanızı dinler ve yapay zeka ile metne çevirir.</div>
-    </div>
-    <div class="help-item">
-      <span class="help-icon">🔔</span>
-      <div><strong>Hatırlatıcı:</strong> Seçtiğiniz şehir için istediğiniz zamana bildirim kurar.</div>
-    </div>
-    <div class="help-item">
-      <span class="help-icon">🌓</span>
-      <div><strong>Tema:</strong> Uygulama görünümünü gece ve gündüz modu arasında değiştirir.</div>
-    </div>
-  </div>
-
-  <div style="padding:15px;border-top:1px solid var(--brd);font-size:10px;color:var(--txt3);text-align:center">v1.3 • AI Destekli</div>
-</div>
-
+<div id="app">
 <header class="hdr">
   <div class="hdr-l">
-    <button class="abtn" id="menuBtn">☰</button>
     <h1 style="font-family:'Segoe UI',Roboto,Helvetica,sans-serif;letter-spacing:-0.5px;font-style:normal">Türkiye Şehir Notları</h1>
   </div>
-  <div class="hdr-r">
-    <button class="abtn" id="gpsBtn">📍</button>
-    <button class="abtn" id="pdfBtn" title="PDF Özetle">✨</button>
-    <button class="abtn" id="multiBtn" title="Akıllı Analiz (Foto + Ses)">📸</button>
-    <button class="abtn" id="micBtn" title="Sesli Not">🎤</button>
-    <button class="abtn" id="remBtn">🔔</button>
-    <button class="abtn" id="thBtn">🌓</button>
-  </div>
 </header>
+<div class="offline-bar" id="offlineBar" role="status">📡 Çevrimdışı — notlarınız çalışmaya devam ediyor</div>
 
-<div class="map-wrap">
-  <div id="map"></div>
-  <div class="map-loading" id="mapLoading"><div class="spinner"></div><span>Harita yükleniyor…</span></div>
-</div>
+<main class="views">
+<section class="view" id="view-map" aria-labelledby="mapTitle">
+  <h2 class="sr-only" id="mapTitle" tabindex="-1">Harita</h2>
+  <div class="map-wrap">
+    <!-- Screen readers use "+ Not Ekle" and Notlarım instead of 81 province shapes. -->
+    <div id="map" aria-hidden="true"></div>
+    <div class="map-loading" id="mapLoading" role="status"><div class="spinner" aria-hidden="true"></div><span>Harita yükleniyor…</span></div>
+    <div class="map-err" id="mapError" hidden>
+      <div class="map-err-card" role="alert">
+        <strong>Harita yüklenemedi</strong>
+        <p>İnternet bağlantınızı kontrol edin. Notlarınız güvende; şehri listeden seçerek not ekleyebilirsiniz.</p>
+        <button type="button" class="city-btn primary" id="mapRetry">Tekrar dene</button>
+        <button type="button" class="city-btn secondary" id="mapPick">Şehir listesinden seç</button>
+      </div>
+    </div>
+  </div>
+  <div class="map-tools">
+    <button type="button" class="map-tool" id="gpsBtn" aria-label="Bulunduğum şehri bul"><span aria-hidden="true">📍</span></button>
+    <button type="button" class="map-tool" id="zoomIn" aria-label="Haritayı yakınlaştır"><span aria-hidden="true">+</span></button>
+    <button type="button" class="map-tool" id="zoomOut" aria-label="Haritayı uzaklaştır"><span aria-hidden="true">−</span></button>
+  </div>
+  <button type="button" class="map-fab" id="addFab"><span aria-hidden="true">＋</span>Not Ekle</button>
+</section>
 
-<div class="scroll-area">
+<section class="view scroll-area" id="view-notes" aria-labelledby="notesTitle" hidden>
+  <div class="page">
+    <h2 class="page-h" id="notesTitle" tabindex="-1">Notlarım</h2>
+    <div class="seg" role="group" aria-label="Notlarım bölümleri">
+      <button type="button" data-panel="notes" aria-pressed="true">Şehirler</button>
+      <button type="button" data-panel="favs" aria-pressed="false">Favoriler</button>
+      <button type="button" data-panel="stats" aria-pressed="false">İstatistik</button>
+    </div>
+  </div>
   <div class="tab-panel on" id="tab-notes">
-    <div class="sch"><div class="sch-inner"><span class="sch-icon">🔍</span><input id="schIn" placeholder="Şehir, not veya kategori ara…" type="search"></div></div>
+    <div class="sch"><div class="sch-inner"><span class="sch-icon" aria-hidden="true">🔍</span><input id="schIn" placeholder="Şehir, not veya kategori ara…" type="search" aria-label="Notlu şehirlerde ara"></div></div>
     <div class="sum">
       <div class="sh2">Notlu Şehirler <span class="bdg" id="ab">0</span></div>
-      <div class="sort-row">
-        <button class="sort-btn on" data-sort="count">📊 Sayı</button>
-        <button class="sort-btn" data-sort="alpha">🔤 A-Z</button>
-        <button class="sort-btn" data-sort="star">⭐ Yıldız</button>
+      <div class="sort-row" role="group" aria-label="Sıralama">
+        <button type="button" class="sort-btn on" data-sort="count" aria-pressed="true"><span aria-hidden="true">📊</span> Sayı</button>
+        <button type="button" class="sort-btn" data-sort="alpha" aria-pressed="false"><span aria-hidden="true">🔤</span> A-Z</button>
+        <button type="button" class="sort-btn" data-sort="star" aria-pressed="false"><span aria-hidden="true">⭐</span> Yıldız</button>
       </div>
       <div id="sl"></div>
     </div>
@@ -432,8 +535,28 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
       <div class="bar-chart" id="regionChart"></div>
     </div>
   </div>
-  <div class="tab-panel" id="tab-backup">
+</section>
+
+<section class="view scroll-area" id="view-backup" aria-labelledby="backupTitle" hidden>
+  <div class="page"><h2 class="page-h" id="backupTitle" tabindex="-1">Yedek ve veri güvenliği</h2></div>
     <div class="backup-wrap">
+      <div class="bk-card"><div class="bk-title">📤 Dışa Aktar</div><div class="bk-desc">Tüm notları JSON olarak indirin.</div><button class="bk-btn primary" onclick="exportJSON()">JSON İndir</button><p class="bk-status" id="exportStatus" role="status" aria-live="polite"></p></div>
+      <div class="bk-card"><div class="bk-title">📥 İçe Aktar</div><div class="bk-desc">Önceden dışa aktardığınız JSON'ı yükleyin. Eklenecek notları önce gösterir; mevcut notlar korunur.</div><button type="button" class="bk-btn secondary" onclick="pickImportFile()">Dosya Seç</button><input type="file" id="restoreFile" accept=".json" onchange="importJSON(this)"><p class="bk-status" id="importStatus" role="status" aria-live="polite"></p><button type="button" class="bk-btn secondary" id="impRoomRetry" hidden>Room kopyasını yeniden dene</button></div>
+      <div class="bk-card"><div class="bk-title">📧 E-posta</div><div class="bk-desc">Notları e-posta uygulamanıza aktarın.</div><button class="bk-btn secondary" onclick="emailNotes()">E-posta Aç</button></div>
+      <section class="bk-card" id="cloudCard" aria-labelledby="cloudTitle">
+        <h2 class="bk-title" id="cloudTitle">☁️ Bulut Yedekleme</h2>
+        <p class="bk-desc">Notlarınızın bir kopyasını Google hesabınıza bağlı, yalnız sizin erişebildiğiniz bir alanda saklar; son 5 tamamlanmış yedek tutulur. Oturum açmadan da uygulama ve notlarınız aynen çalışır.</p>
+        <p class="bk-desc" id="cloudAccount"></p>
+        <div class="ds-actions">
+          <button type="button" class="bk-btn primary" id="cloudSignIn" hidden>Google ile oturum aç</button>
+          <button type="button" class="bk-btn primary" id="cloudBackupNow" hidden>Şimdi yedekle</button>
+          <button type="button" class="bk-btn secondary" id="cloudRefresh" hidden>Yedek listesini yenile</button>
+        </div>
+        <label class="ds-check" id="cloudAutoRow" hidden><input type="checkbox" id="cloudAuto"> <span>Otomatik yedekle: notlar değiştiyse uygulamadan çıkarken, en çok günde bir kez.</span></label>
+        <p class="bk-status" id="cloudStatus" role="status" aria-live="polite"></p>
+        <ul class="ds-hist cloud-list" id="cloudList" aria-label="Bulut yedekleri"></ul>
+        <button type="button" class="bk-btn secondary" id="cloudSignOut" hidden>Oturumu kapat</button>
+      </section>
       <section class="bk-card ds-card" id="dataSafety" data-state="checking" aria-labelledby="dsTitle">
         <h2 class="bk-title" id="dsTitle" tabindex="-1">🛡️ Veri Güvenliği</h2>
         <p class="bk-desc">Telefondaki notlarınız (ana kayıt, localStorage) ile Room kopyası her açılışta karşılaştırılır. Buradaki işlemler yalnız Room kopyasını değiştirir; notlarınız değişmez.</p>
@@ -467,87 +590,170 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
         <h3 class="ds-sub" id="rfBackupTitle" hidden>Geçiş yedekleri</h3>
         <ul class="ds-hist" id="rfBackups" aria-labelledby="rfBackupTitle"></ul>
       </section>
-      <div class="bk-card"><div class="bk-title">☁️ Bulut Yedekleme</div><div class="bk-desc">Verilerinizi Firebase üzerine yedekleyin veya geri yükleyin.</div>
-        <div style="display:flex;gap:5px">
-            <button class="bk-btn primary" style="flex:1" onclick="cloudBackup()">Buluta Yedekle</button>
-            <button class="bk-btn secondary" style="flex:1" onclick="cloudRestore()">Geri Yükle</button>
-        </div>
-      </div>
-      <div class="bk-card"><div class="bk-title">📤 Dışa Aktar</div><div class="bk-desc">Tüm notları JSON olarak indirin.</div><button class="bk-btn primary" onclick="exportJSON()">JSON İndir</button></div>
-      <div class="bk-card"><div class="bk-title">📥 İçe Aktar</div><div class="bk-desc">Önceden dışa aktardığınız JSON'ı yükleyin. Mevcut notlar korunur.</div><button class="bk-btn secondary" onclick="document.getElementById('restoreFile').click()">Dosya Seç</button><input type="file" id="restoreFile" accept=".json" onchange="importJSON(this)"></div>
-      <div class="bk-card"><div class="bk-title">📧 E-posta</div><div class="bk-desc">Notları e-posta uygulamanıza aktarın.</div><button class="bk-btn secondary" onclick="emailNotes()">E-posta Aç</button></div>
       <div class="bk-card"><div class="bk-title">🗑️ Tüm Notları Sil</div><div class="bk-desc">Geri alınamaz.</div><button class="bk-btn danger" onclick="clearAll()">Tüm Notları Sil</button></div>
     </div>
+</section>
+
+<section class="view scroll-area" id="view-settings" aria-labelledby="setTitle" hidden>
+  <div class="page">
+    <h2 class="page-h" id="setTitle" tabindex="-1">Ayarlar</h2>
+    <h3 class="set-h" id="themeLbl">Görünüm</h3>
+    <div class="seg" role="radiogroup" aria-labelledby="themeLbl">
+      <button type="button" role="radio" data-theme-opt="light" aria-checked="true"><span aria-hidden="true">☀️</span> Açık</button>
+      <button type="button" role="radio" data-theme-opt="dark" aria-checked="false"><span aria-hidden="true">🌙</span> Koyu</button>
+    </div>
+    <p class="set-hint">Yazı boyutu telefonunuzun erişilebilirlik ayarını izler.</p>
+    <h3 class="set-h">Hatırlatıcı</h3>
+    <div class="set-list">
+      <button type="button" class="set-row" id="remBtn"><span class="set-ico" aria-hidden="true">🔔</span><span class="set-txt"><strong>Hatırlatıcı kur</strong><span>Bir şehir için bildirim zamanı seçin</span></span></button>
+    </div>
+    <h3 class="set-h" id="aiTitle2">Akıllı özellikler</h3>
+    <p class="set-hint" id="aiOffNote" hidden>Bu sürümde kapalı. Notlarınız etkilenmez.</p>
+    <div class="set-list" role="group" aria-labelledby="aiTitle2">
+      <button type="button" class="set-row" id="micBtn"><span class="set-ico" aria-hidden="true">🎤</span><span class="set-txt"><strong>Sesli not</strong><span>Konuşmanızı yapay zekâ ile metne çevirir</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
+      <button type="button" class="set-row" id="multiBtn"><span class="set-ico" aria-hidden="true">📸</span><span class="set-txt"><strong>Akıllı analiz</strong><span>Fotoğraf ve sesinizden not oluşturur</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
+      <button type="button" class="set-row" id="pdfBtn"><span class="set-ico" aria-hidden="true">✨</span><span class="set-txt"><strong>PDF özeti</strong><span>Bir PDF dosyasını özetleyip nota dönüştürür</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
+    </div>
+    <h3 class="set-h">Uygulama</h3>
+    <div class="set-list">
+      <button type="button" class="set-row" id="updCheck"><span class="set-ico" aria-hidden="true">🔄</span><span class="set-txt"><strong id="updCheckTxt">Güncellemeleri denetle</strong><span id="updVerTxt">Yüklü sürüm</span></span><span class="bdg" id="updBadge" hidden></span></button>
+      <label class="set-row" id="updAutoRow" hidden><input type="checkbox" class="set-chk" id="updAuto"><span class="set-txt"><strong>Güncellemeleri otomatik indir</strong><span>Yalnız Wi-Fi gibi kotasız ağlarda. Kurulum her zaman sizin onayınızla başlar.</span></span></label>
+      <label class="set-row" id="updPreRow" hidden><input type="checkbox" class="set-chk" id="updPre"><span class="set-txt"><strong>Test sürümlerini de al</strong><span>GitHub'daki ön sürümler (pre-release) hata içerebilir.</span></span></label>
+      <details class="set-help">
+        <summary><span class="set-ico" aria-hidden="true">❓</span>Nasıl kullanılır?</summary>
+        <ul>
+          <li><strong>Not eklemek:</strong> Haritadaki “＋ Not Ekle” düğmesine dokunup şehri seçin ya da haritada bir şehre dokunun.</li>
+          <li><strong>Bulunduğunuz şehir:</strong> Haritadaki 📍 düğmesi konumunuzdan şehri bulur.</li>
+          <li><strong>Notları bulmak:</strong> Notlarım’da şehirlere, favorilere ve istatistiklere ulaşırsınız.</li>
+          <li><strong>Silmek:</strong> Notun Düzenle ekranındaki “Notu sil” ile; silinen not birkaç saniye “Geri Al” ile kurtarılabilir.</li>
+          <li><strong>Yedek:</strong> Telefon değiştirmeden önce Yedek’ten JSON dosyası indirin.</li>
+        </ul>
+      </details>
+      <div class="set-row static"><span class="set-ico" aria-hidden="true">ℹ️</span><span class="set-txt"><strong>Türkiye Şehir Notları</strong><span id="aboutVerTxt">Notlar bu telefonda saklanır</span></span></div>
+    </div>
   </div>
+</section>
+</main>
+
+<nav class="bnav" aria-label="Ana gezinme">
+  <button type="button" data-view="map" aria-current="page"><span class="ico" aria-hidden="true">🗺️</span><span class="lbl">Harita</span></button>
+  <button type="button" data-view="notes"><span class="ico" aria-hidden="true">📒</span><span class="lbl">Notlarım</span></button>
+  <button type="button" data-view="backup"><span class="ico"><span aria-hidden="true">💾</span><span class="bdg" id="dsBadge" hidden></span></span><span class="lbl">Yedek</span></button>
+  <button type="button" data-view="settings"><span class="ico" aria-hidden="true">⚙️</span><span class="lbl">Ayarlar</span></button>
+</nav>
 </div>
 
 <!-- NOT MODAL -->
 <div class="ov" id="ov">
-  <div class="modal" id="modalEl">
-    <div class="mhdl"></div>
+  <div class="modal" id="modalEl" role="dialog" aria-modal="true" aria-labelledby="mname" aria-describedby="mreg">
+    <div class="mhdl" aria-hidden="true"></div>
     <div class="mhd">
-      <div class="mci"><div class="mdot" id="mdot"></div><div><div class="mname" id="mname">-</div><div class="mreg" id="mreg">-</div></div></div>
-      <button class="mcl" id="mcl">✕</button>
+      <div class="mci"><div class="mdot" id="mdot" aria-hidden="true"></div><div><h2 class="mname" id="mname" tabindex="-1">-</h2><div class="mreg" id="mreg">-</div></div></div>
+      <button type="button" class="mcl" id="mcl" aria-label="Şehir panelini kapat"><span aria-hidden="true">✕</span></button>
     </div>
     <div class="city-meta" id="cityMeta"></div>
-    <div id="aiGuideWrap" style="padding:10px 14px; background:var(--surf2); border-bottom:1px solid var(--brd); display:none;">
-        <div style="font-size:10px; font-weight:700; color:var(--acc); text-transform:uppercase; letter-spacing:.7px; margin-bottom:5px; display:flex; align-items:center; gap:5px;">✨ Akıllı Rehber</div>
-        <div id="aiGuideContent" style="font-size:12px; color:var(--txt2); line-height:1.5;">Bilgiler getiriliyor...</div>
-    </div>
     <div class="wx-wrap" id="wxWrap"><div class="wx-loading"><div class="spinner" style="width:14px;height:14px;border-width:2px"></div> Hava yükleniyor…</div></div>
-    <div class="mfrm">
-      <div class="mfrm-title">Yeni Not Ekle</div>
-      <div class="cats" id="cats">
-        <div class="cat sel" data-c="Gezi">📍 Gezi</div>
-        <div class="cat" data-c="Lezzet">🍔 Lezzet</div>
-        <div class="cat" data-c="Kültür">🏛️ Kültür</div>
-        <div class="cat" data-c="Genel">📝 Genel</div>
+    <div class="city-acts">
+      <button type="button" class="city-btn primary" id="cityAdd" aria-expanded="false" aria-controls="noteForm"><span aria-hidden="true">＋</span> Not ekle</button>
+      <button type="button" class="city-btn secondary" id="cityRem"><span aria-hidden="true">🔔</span> Hatırlat</button>
+    </div>
+    <div class="mfrm" id="noteForm" role="group" aria-labelledby="noteFormTitle" hidden>
+      <h3 class="mfrm-title" id="noteFormTitle">Yeni not</h3>
+      <div class="cats" id="cats" role="group" aria-label="Kategori">
+        <button type="button" class="cat sel" data-c="Gezi" aria-pressed="true"><span aria-hidden="true">📍</span> Gezi</button>
+        <button type="button" class="cat" data-c="Lezzet" aria-pressed="false"><span aria-hidden="true">🍔</span> Lezzet</button>
+        <button type="button" class="cat" data-c="Kültür" aria-pressed="false"><span aria-hidden="true">🏛️</span> Kültür</button>
+        <button type="button" class="cat" data-c="Genel" aria-pressed="false"><span aria-hidden="true">📝</span> Genel</button>
       </div>
-      <div class="ff"><label>Başlık</label><input id="nt" type="text" placeholder="Not başlığı…" maxlength="80"></div>
-      <div class="ff"><label>İçerik</label><textarea id="nc" placeholder="Not içeriği…" maxlength="2000"></textarea></div>
-      <div class="star-row" id="newStars">
-        <span class="star" data-v="1">★</span><span class="star" data-v="2">★</span><span class="star" data-v="3">★</span><span class="star" data-v="4">★</span><span class="star" data-v="5">★</span>
+      <div class="ff"><label for="nt">Başlık</label><input id="nt" type="text" placeholder="Not başlığı…" maxlength="80"></div>
+      <div class="ff"><label for="nc">İçerik</label><textarea id="nc" placeholder="Not içeriği…" maxlength="2000"></textarea></div>
+      <div class="star-row" id="newStars" role="group" aria-label="Puan">
+        <button type="button" class="star" data-v="1" aria-label="1 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="2" aria-label="2 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="3" aria-label="3 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="4" aria-label="4 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="5" aria-label="5 yıldız" aria-pressed="false">★</button>
         <span id="starLabel">Puan ver</span>
       </div>
-      <div class="color-row">
-        <span class="color-lbl">Renk:</span>
-        <div class="color-opt sel" data-col="" style="background:var(--surf2);border-color:var(--brd)"></div>
-        <div class="color-opt" data-col="#fef3c7" style="background:#fef3c7"></div>
-        <div class="color-opt" data-col="#d1fae5" style="background:#d1fae5"></div>
-        <div class="color-opt" data-col="#dbeafe" style="background:#dbeafe"></div>
-        <div class="color-opt" data-col="#fce7f3" style="background:#fce7f3"></div>
-        <div class="color-opt" data-col="#ede9fe" style="background:#ede9fe"></div>
+      <div class="color-row" role="group" aria-labelledby="colorLbl">
+        <span class="color-lbl" id="colorLbl">Renk:</span>
+        <button type="button" class="color-opt sel" data-col="" aria-label="Renksiz" aria-pressed="true" style="background:var(--surf2)"></button>
+        <button type="button" class="color-opt" data-col="#fef3c7" aria-label="Sarı" aria-pressed="false" style="background:#fef3c7"></button>
+        <button type="button" class="color-opt" data-col="#d1fae5" aria-label="Yeşil" aria-pressed="false" style="background:#d1fae5"></button>
+        <button type="button" class="color-opt" data-col="#dbeafe" aria-label="Mavi" aria-pressed="false" style="background:#dbeafe"></button>
+        <button type="button" class="color-opt" data-col="#fce7f3" aria-label="Pembe" aria-pressed="false" style="background:#fce7f3"></button>
+        <button type="button" class="color-opt" data-col="#ede9fe" aria-label="Mor" aria-pressed="false" style="background:#ede9fe"></button>
       </div>
-      <button class="badd" id="ba">✚ Not Ekle</button>
+      <div class="mfrm-acts">
+        <button type="button" class="badd" id="ba"><span aria-hidden="true">✚</span> Kaydet</button>
+        <button type="button" class="city-btn secondary" id="addCancel">Vazgeç</button>
+      </div>
     </div>
     <div class="mnts">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div class="mnts-title" style="margin-bottom:0">Mevcut Notlar <span class="bdg" id="nb">0</span></div>
+        <h3 class="mnts-title" style="margin-bottom:0">Notlar <span class="bdg" id="nb">0</span></h3>
       </div>
       <div id="nl"></div>
     </div>
+    <div id="aiGuideWrap" style="padding:10px 14px; background:var(--surf2); border-top:1px solid var(--brd); display:none;">
+        <div style="font-size:12px; font-weight:700; color:var(--acc-txt); text-transform:uppercase; letter-spacing:.7px; margin-bottom:5px; display:flex; align-items:center; gap:5px;"><span aria-hidden="true">✨</span> Akıllı Rehber</div>
+        <div id="aiGuideContent" style="font-size:13px; color:var(--txt2); line-height:1.5;">Bilgiler getiriliyor...</div>
+    </div>
+  </div>
+</div>
+
+<!-- CITY PICKER -->
+<div class="ov" id="pickOv">
+  <div class="modal pick" role="dialog" aria-modal="true" aria-labelledby="pickTitle">
+    <div class="mhd">
+      <h2 class="mname" id="pickTitle" tabindex="-1">Hangi şehre not eklenecek?</h2>
+      <button type="button" class="mcl" id="pickClose" aria-label="Şehir seçimini kapat"><span aria-hidden="true">✕</span></button>
+    </div>
+    <div class="pick-bd">
+      <button type="button" class="city-btn secondary" id="pickGps"><span aria-hidden="true">📍</span> Bulunduğum şehri kullan</button>
+      <div class="sch-inner"><span class="sch-icon" aria-hidden="true">🔍</span><input id="pickQ" type="search" placeholder="İl ara (ör. izmir, sanliurfa)" aria-label="İl ara" autocomplete="off"></div>
+      <p class="set-hint" id="pickCount" aria-live="polite" style="margin:0"></p>
+    </div>
+    <ul class="pick-list" id="pickList" aria-label="İller"></ul>
   </div>
 </div>
 
 <!-- EDIT -->
 <div class="sub-ov" id="editOv">
-  <div class="sub-box">
-    <h3>✏️ Notu Düzenle</h3>
-    <div class="ff"><label>Başlık</label><input id="eTitle" type="text" maxlength="80"></div>
-    <div class="ff"><label>İçerik</label><textarea id="eContent" maxlength="2000" style="min-height:80px"></textarea></div>
-    <div class="star-row" id="editStars"><span class="star" data-v="1">★</span><span class="star" data-v="2">★</span><span class="star" data-v="3">★</span><span class="star" data-v="4">★</span><span class="star" data-v="5">★</span></div>
+  <div class="sub-box" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+    <h3 id="editTitle" tabindex="-1"><span aria-hidden="true">✏️</span> Notu Düzenle</h3>
+    <div class="ff"><label for="eTitle">Başlık</label><input id="eTitle" type="text" maxlength="80"></div>
+    <div class="ff"><label for="eContent">İçerik</label><textarea id="eContent" maxlength="2000" style="min-height:80px"></textarea></div>
+    <div class="star-row" id="editStars" role="group" aria-label="Puan"><button type="button" class="star" data-v="1" aria-label="1 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="2" aria-label="2 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="3" aria-label="3 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="4" aria-label="4 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="5" aria-label="5 yıldız" aria-pressed="false">★</button></div>
     <div class="sub-row"><button class="ok" onclick="saveEdit()">Kaydet</button><button class="cancel" onclick="closeEdit()">İptal</button></div>
+    <div class="edit-del-wrap"><button type="button" class="edit-del" id="eDelete" onclick="askDelete()"><span aria-hidden="true">🗑️</span> Notu sil</button></div>
+  </div>
+</div>
+
+<!-- DELETE CONFIRMATION -->
+<div class="sub-ov" id="delOv">
+  <div class="sub-box del-dlg" role="alertdialog" aria-modal="true" aria-labelledby="delTitle" aria-describedby="delText">
+    <h3 id="delTitle">Not silinsin mi?</h3>
+    <p id="delText"></p>
+    <div class="sub-row"><button type="button" class="cancel" id="delCancel">Vazgeç</button><button type="button" class="del-ok" id="delConfirm">Sil</button></div>
+  </div>
+</div>
+
+<!-- IMPORT PREVIEW -->
+<div class="sub-ov" id="impOv">
+  <div class="sub-box del-dlg" role="dialog" aria-modal="true" aria-labelledby="impTitle" aria-describedby="impText impDetail">
+    <h3 id="impTitle" tabindex="-1">Yedek içe aktarılsın mı?</h3>
+    <p id="impText"></p>
+    <p id="impDetail"></p>
+    <label class="ds-check" id="impDeletedRow" hidden><input type="checkbox" id="impDeleted"> <span id="impDeletedText"></span></label>
+    <div class="sub-row"><button type="button" class="cancel" id="impCancel">Vazgeç</button><button type="button" class="ok" id="impConfirm">İçe aktar</button></div>
   </div>
 </div>
 
 <!-- REMINDER -->
 <div class="sub-ov" id="remOv">
-  <div class="sub-box">
-    <h3>🔔 Hatırlatıcı Kur</h3>
-    <p style="font-size:11px;color:var(--txt3);margin-bottom:12px">Seçilen zamanda tarayıcı bildirimi alırsınız.</p>
-    <div class="ff"><label>Şehir</label><input id="remCity" type="text" placeholder="Şehir adı…"></div>
-    <div class="ff"><label>Mesaj</label><input id="remMsg" type="text" placeholder="Hatırlatıcı mesajı…" maxlength="80"></div>
-    <div class="ff"><label>Tarih &amp; Saat</label><input type="datetime-local" id="remTime" style="width:100%;padding:9px 11px;border-radius:var(--rsm);border:1.5px solid var(--brd);font-size:14px;font-family:inherit;color:var(--txt);background:var(--surf);outline:none;-webkit-appearance:none"></div>
+  <div class="sub-box" role="dialog" aria-modal="true" aria-labelledby="remTitle">
+    <h3 id="remTitle"><span aria-hidden="true">🔔</span> Hatırlatıcı Kur</h3>
+    <p style="font-size:13px;color:var(--txt3);margin-bottom:12px">Seçilen zamanda bildirim alırsınız.</p>
+    <div class="ff"><label for="remCity">Şehir</label><input id="remCity" type="text" placeholder="Şehir adı…"></div>
+    <div class="ff"><label for="remMsg">Mesaj</label><input id="remMsg" type="text" placeholder="Hatırlatıcı mesajı…" maxlength="80"></div>
+    <div class="ff"><label for="remTime">Tarih &amp; Saat</label><input type="datetime-local" id="remTime" style="width:100%;padding:9px 11px;border-radius:var(--rsm);border:1.5px solid var(--brd);font-size:14px;font-family:inherit;color:var(--txt);background:var(--surf);outline:none;-webkit-appearance:none"></div>
     <div class="sub-row"><button class="ok" onclick="saveReminder()">Kur</button><button class="cancel" onclick="document.getElementById('remOv').classList.remove('open')">İptal</button></div>
   </div>
 </div>
@@ -589,8 +795,8 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
     <h3 id="micTitle">🎤 Sesli Not Al</h3>
     <div id="micStatus" style="font-size:13px;color:var(--txt3);margin-bottom:20px">Dinlemeye hazır...</div>
     <div style="display:flex;justify-content:center;gap:20px;margin-bottom:10px">
-        <button id="micStartBtn" class="bk-btn primary" style="width:80px;height:80px;border-radius:50%;font-size:24px">⏺️</button>
-        <button id="micStopBtn" class="bk-btn danger" style="width:80px;height:80px;border-radius:50%;font-size:24px;display:none">⏹️</button>
+        <button id="micStartBtn" class="bk-btn primary" aria-label="Kaydı başlat" style="width:80px;height:80px;border-radius:50%;font-size:24px">⏺️</button>
+        <button id="micStopBtn" class="bk-btn danger" aria-label="Kaydı durdur" style="width:80px;height:80px;border-radius:50%;font-size:24px;display:none">⏹️</button>
     </div>
     <p id="micDesc" style="font-size:10px;color:var(--txt3);margin-top:10px">Konuşmanız bittiğinde durdurun, AI otomatik olarak metne dönüştürecektir.</p>
     <div class="sub-row"><button class="cancel" onclick="document.getElementById('micOv').classList.remove('open')">Kapat</button></div>
@@ -602,23 +808,32 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
     <span id="loadingTxt">İşleniyor...</span>
   </div>
 </div>
-<div class="upd-banner" id="updBanner" role="status">
-  <div class="upd-top">
-    <div class="upd-copy">
-      <strong id="updTitle">Yeni Güncelleme Mevcut · v1.2 test</strong>
-      <span class="upd-status" id="updStatus">İndiriliyor…</span>
+<div class="sub-ov upd-ov" id="updOv">
+  <div class="sub-box upd-dlg" id="updDlg" role="dialog" aria-modal="true" aria-labelledby="updTitle" aria-describedby="updStatus">
+    <p class="upd-ver" id="updVersion"></p>
+    <h3 id="updTitle" tabindex="-1">Neler Yeni?</h3>
+    <div class="upd-notes" id="updNotes" tabindex="0" role="region" aria-label="Sürüm notları"></div>
+    <div class="upd-track" id="updBar" role="progressbar" aria-label="İndirme ilerlemesi" aria-valuemin="0" aria-valuemax="100" hidden><div class="upd-fill" id="updFill"></div></div>
+    <p class="upd-status" id="updStatus" role="status" aria-live="polite"></p>
+    <div class="sub-row upd-row">
+      <button type="button" class="cancel" id="updLater">Daha Sonra</button>
+      <button type="button" class="ok" id="updPrimary">Güncelle ve Yükle</button>
     </div>
-    <button class="upd-action" id="updAction" type="button" style="display:none">Kur</button>
   </div>
-  <div class="upd-track"><div class="upd-fill" id="updFill"></div></div>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="undo-bar" id="undoBar" role="status" aria-live="polite" hidden><span id="undoText"></span><button type="button" id="undoBtn">Geri Al</button></div>
 <div class="rf-bar" id="rfBar" role="status" aria-live="polite" hidden></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="note-ids.js"></script>
+<script src="note-delete.js"></script>
+<script src="city-pick.js"></script>
+<script src="notes-file.js"></script>
+<script src="cloud-backup.js"></script>
 <script src="data-safety.js"></script>
 <script src="room-first.js"></script>
+<script src="release-notes.js"></script>
 <script>
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 let _tt,rfToast=null;const toast=m=>{if(rfToast){m=rfToast;rfToast=null;}const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2500);};
@@ -641,7 +856,10 @@ const NKEY='tur_v10';
 const RF_INFO=(()=>{try{return window.Android&&typeof window.Android.roomFirstMode==='function'?JSON.parse(window.Android.roomFirstMode()):null;}catch(e){return null;}})();
 const RF_MODE=!!(RF_INFO&&RF_INFO.available===true&&RF_INFO.on===true);
 let DB=RF_MODE?{}:(()=>{try{return JSON.parse(localStorage.getItem(NKEY))||{};}catch{return{};}})();
-const sv=()=>{if(RF_MODE){rfCommitFromDB();return;}localStorage.setItem(NKEY,JSON.stringify(DB));};
+// A note inside its undo window is hidden from DB but stays in the saved copy (note-delete.js).
+let noteDel=null;
+const storedDB=()=>noteDel?noteDel.view(DB):DB;
+const sv=()=>{if(RF_MODE){rfCommitFromDB();return;}localStorage.setItem(NKEY,JSON.stringify(storedDB()));};
 let curCity=null,curBolge=null,mapReady=false,q='',selCat='Gezi',selStar=0,selColor='',sortMode='count',dimR='',editingCity=null,editingId=null;
 
 // ── MAP ───────────────────────────────────────────────────────────────────────
@@ -706,17 +924,37 @@ function buildPins(){
       icon:L.divIcon({
         className:'note-pin-wrap',
         html:`<div class="note-pin" onclick="openModal('${city}','${IL_BOLGE[city]||'ic'}')">${cnt}</div>`,
-        iconSize:[20,20],iconAnchor:[10,10]
+        iconSize:[32,32],iconAnchor:[16,16]
       }),
-      zIndexOffset:1000,interactive:true
+      zIndexOffset:1000,interactive:true,keyboard:false
     }).addTo(lmap);
     pinMarkers[city]=m;
   });
 }
 
+// Leaflet and the province borders come from CDNs: offline the map shows a retry card,
+// and notes stay reachable through "+ Not Ekle" and Notlarım.
+function loadLeaflet(){
+  if(window.L)return Promise.resolve();
+  return new Promise((resolve,reject)=>{
+    const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css);
+    const s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    s.onload=()=>window.L?resolve():reject(new Error('Leaflet missing'));s.onerror=()=>{s.remove();reject(new Error('Leaflet unavailable'));};
+    document.head.appendChild(s);
+  });
+}
+function mapFailed(){document.getElementById('mapLoading').style.display='none';document.getElementById('mapError').hidden=false;document.getElementById('view-map').classList.add('map-off');}
+let mapLoadBusy=false;
 async function initMap(){
-  lmap=L.map('map',{center:[39.0,35.5],zoom:6,zoomControl:false,minZoom:5,maxZoom:12,maxBounds:[[34.0,23.5],[43.5,46.5]],maxBoundsViscosity:1.0});
-  L.control.zoom({position:'bottomright'}).addTo(lmap);
+  if(mapLoadBusy)return;mapLoadBusy=true;
+  try{await loadMap();}finally{mapLoadBusy=false;}
+}
+async function loadMap(){
+  document.getElementById('mapError').hidden=true;
+  document.getElementById('mapLoading').style.display='flex';
+  try{await loadLeaflet();}catch{mapFailed();return;}
+  if(lmap){await loadProvinces();return;}
+  lmap=L.map('map',{center:[39.0,35.5],zoom:6,zoomControl:false,keyboard:false,minZoom:5,maxZoom:12,maxBounds:[[34.0,23.5],[43.5,46.5]],maxBoundsViscosity:1.0});
   const addTile=()=>{
     if(lmap._tile)lmap.removeLayer(lmap._tile);
     // CARTO free basemaps now return blank/API-key stubs; use keyless providers.
@@ -727,13 +965,19 @@ async function initMap(){
     }
   };
   addTile();lmap._addTile=addTile;
-
+  lmap.on('zoomend',buildLabels);
+  await loadProvinces();
+}
+async function loadProvinces(){
   let geo=null;
   for(const url of['https://cdn.jsdelivr.net/gh/cihadturhan/tr-map@master/geo/tr-cities-utf8.json','https://raw.githubusercontent.com/cihadturhan/tr-map/master/geo/tr-cities-utf8.json']){
-    try{const r=await fetch(url);if(r.ok){geo=await r.json();break;}}catch{}
+    const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
+    try{const r=await fetch(url,{signal:ctl.signal});if(r.ok){geo=await r.json();break;}}catch{}
+    finally{clearTimeout(timer);}
   }
-  document.getElementById('mapLoading').style.display='none';
-  if(!geo){document.getElementById('mapLoading').innerHTML='<span style="color:#c0392b;padding:16px">⚠️ Harita yüklenemedi</span>';document.getElementById('mapLoading').style.display='flex';return;}
+  if(!geo){mapFailed();return;}
+  document.getElementById('mapLoading').style.display='none';document.getElementById('view-map').classList.remove('map-off');
+  if(geoLayer)lmap.removeLayer(geoLayer);
 
   geoLayer=L.geoJSON(geo,{
     style:f=>getStyle(f.properties.name),
@@ -744,8 +988,9 @@ async function initMap(){
       layer.on('click',()=>openModal(city,IL_BOLGE[city]||'ic'));
     }
   }).addTo(lmap);
+  lmap.invalidateSize();
   lmap.fitBounds(geoLayer.getBounds(),{padding:[6,6]});
-  lmap.on('zoomend',buildLabels);
+  mapNeedsFit=document.getElementById('view-map').hidden;
   buildLabels();buildPins();
   mapReady=true;updateStyles();
 }
@@ -763,44 +1008,79 @@ function applyDim(){if(!geoLayer)return;geoLayer.eachLayer(layer=>{const city=la
 initMap();
 
 // ── UI ────────────────────────────────────────────────────────────────────────
-const dr = document.getElementById('drawer');
-const drOv = document.getElementById('drOv');
-const toggleDr = (open) => {
-    dr.classList.toggle('open', open);
-    drOv.style.display = open ? 'block' : 'none';
-    setTimeout(() => drOv.style.opacity = open ? '1' : '0', 10);
-};
+// Bottom navigation: Harita, Notlarım, Yedek, Ayarlar. Only one view is in the DOM flow at a time.
+let curView='map',notesPanel='notes',mapNeedsFit=false;
+function showView(v,focus){
+  // Backup, import and data-safety tools work on the saved copy: finish a pending deletion first.
+  if(v==='backup'&&noteDel)noteDel.commit();
+  curView=v;
+  document.querySelectorAll('.view').forEach(s=>{s.hidden=('view-'+v)!==s.id;});
+  document.querySelectorAll('.bnav button').forEach(b=>{if(b.dataset.view===v)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+  if(v==='map'&&lmap)setTimeout(()=>{lmap.invalidateSize();if(mapNeedsFit&&geoLayer){lmap.fitBounds(geoLayer.getBounds(),{padding:[6,6]});mapNeedsFit=false;}},0);
+  if(v==='notes')showNotesPanel(notesPanel);
+  // Read-only: notes edited since the startup check are compared again.
+  if(v==='backup'&&dsPhase==='ready')dsRecheck();
+  if(focus){const h=document.querySelector('#view-'+v+' h2');if(h)h.focus({preventScroll:true});}
+}
+function showNotesPanel(p){
+  notesPanel=p;
+  document.querySelectorAll('[data-panel]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.panel===p)));
+  document.querySelectorAll('#view-notes .tab-panel').forEach(x=>x.classList.toggle('on',('tab-'+p)===x.id));
+  if(p==='notes')updateSum();
+  if(p==='favs')renderFavs();
+  if(p==='stats')renderStats();
+}
+document.querySelectorAll('.bnav button').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view,true)));
+// Very large system text on a narrow phone: shrink the labels one step before they get cut off.
+function fitNav(){
+  const nav=document.querySelector('.bnav');nav.classList.remove('tight');
+  if([...nav.querySelectorAll('.lbl')].some(l=>l.scrollWidth>l.clientWidth+1))nav.classList.add('tight');
+}
+fitNav();window.addEventListener('resize',fitNav);
+document.querySelectorAll('[data-panel]').forEach(b=>b.addEventListener('click',()=>showNotesPanel(b.dataset.panel)));
+// While a sheet or dialog is open, screen readers stay inside it. aria-hidden (not inert) keeps
+// focus() working for close handlers that return focus before this observer runs.
+const appEl=document.getElementById('app');
+const syncAppHidden=()=>{if(document.querySelector('.ov.open,.sub-ov.open'))appEl.setAttribute('aria-hidden','true');else appEl.removeAttribute('aria-hidden');};
+const overlayWatch=new MutationObserver(syncAppHidden);
+document.querySelectorAll('.ov,.sub-ov').forEach(el=>overlayWatch.observe(el,{attributes:true,attributeFilter:['class']}));
 
-document.getElementById('menuBtn').onclick = () => toggleDr(true);
-drOv.onclick = () => toggleDr(false);
-
-document.querySelectorAll('.d-item').forEach(item => {
-    item.addEventListener('click', () => {
-        const target = item.dataset.target;
-        document.querySelectorAll('.d-item').forEach(x => x.classList.remove('on'));
-        item.classList.add('on');
-        document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('on'));
-        document.getElementById('tab-' + (target === 'backup' ? 'backup' : target)).classList.add('on');
-
-        if (target === 'stats') renderStats();
-        if (target === 'favs') renderFavs();
-        // Read-only: notes edited since the startup check are compared again.
-        if (target === 'backup' && dsPhase === 'ready') dsRecheck();
-
-        toggleDr(false);
-    });
-});
-
-document.querySelectorAll('.sort-btn').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.sort-btn').forEach(x=>x.classList.remove('on'));b.classList.add('on');sortMode=b.dataset.sort;updateSum();}));
+document.querySelectorAll('.sort-btn').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.sort-btn').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',String(x===b));});sortMode=b.dataset.sort;updateSum();}));
 if(localStorage.getItem('theme')==='dark')document.documentElement.setAttribute('data-theme','dark');
-document.getElementById('thBtn').onclick=()=>{const d=isDark();d?document.documentElement.removeAttribute('data-theme'):document.documentElement.setAttribute('data-theme','dark');localStorage.setItem('theme',d?'':'dark');if(lmap&&lmap._addTile)lmap._addTile();updateStyles();};
-document.getElementById('gpsBtn').onclick=()=>{if(!navigator.geolocation){toast('GPS desteklenmiyor.');return;}toast('Konum aranıyor…');navigator.geolocation.getCurrentPosition(async pos=>{try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&accept-language=tr`);const d=await r.json();const city=(d.address.province||d.address.state||'').replace(' İli','').trim();if(city&&CITY_COORDS[city]){lmap.setView(CITY_COORDS[city],8,{animate:true});toast(`📍 ${city}`);setTimeout(()=>openModal(city,IL_BOLGE[city]||'ic'),400);}else toast('Şehir bulunamadı.');}catch{toast('Konum alındı fakat şehir belirlenemedi.');}},err=>toast(['','Konum izni reddedildi.','Konum alınamadı.','Zaman aşımı.'][err.code]||'GPS hatası.'),{timeout:10000});};
+function syncThemeChoice(){const d=isDark();document.querySelectorAll('[data-theme-opt]').forEach(b=>b.setAttribute('aria-checked',String((b.dataset.themeOpt==='dark')===d)));}
+document.querySelectorAll('[data-theme-opt]').forEach(b=>b.addEventListener('click',()=>{
+  const dark=b.dataset.themeOpt==='dark';
+  if(dark===isDark())return;
+  dark?document.documentElement.setAttribute('data-theme','dark'):document.documentElement.removeAttribute('data-theme');
+  localStorage.setItem('theme',dark?'dark':'');
+  if(lmap&&lmap._addTile)lmap._addTile();updateStyles();syncThemeChoice();
+}));
+syncThemeChoice();
+// The city comes from the phone's position via reverse geocoding; without a result the user picks one.
+function findMyCity(onCity){
+  if(!navigator.geolocation){toast('GPS desteklenmiyor.');return;}
+  toast('Konum aranıyor…');
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    let city='';
+    try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&accept-language=tr`);const d=await r.json();city=(d.address.province||d.address.state||'').replace(' İli','').trim();}
+    catch{toast('Konum alındı fakat şehir belirlenemedi.');return;}
+    if(city&&CITY_COORDS[city])onCity(city);else toast('Şehir bulunamadı.');
+  },err=>toast(['','Konum izni reddedildi.','Konum alınamadı.','Zaman aşımı.'][err.code]||'GPS hatası.'),{timeout:10000});
+}
+document.getElementById('gpsBtn').onclick=()=>findMyCity(city=>{if(lmap)lmap.setView(CITY_COORDS[city],8,{animate:true});toast(`📍 ${city}`);setTimeout(()=>openModal(city,IL_BOLGE[city]||'ic'),400);});
+document.getElementById('zoomIn').onclick=()=>{if(lmap)lmap.zoomIn();};
+document.getElementById('zoomOut').onclick=()=>{if(lmap)lmap.zoomOut();};
+document.getElementById('mapRetry').onclick=initMap;
+document.getElementById('mapPick').onclick=e=>openPicker(e.currentTarget);
+document.getElementById('addFab').onclick=e=>openPicker(e.currentTarget);
 // Public builds ship without an AI key; their AI buttons explain that instead of failing later.
 function aiOff(){
   const off=!!(window.Android&&typeof window.Android.aiAvailable==='function'&&!window.Android.aiAvailable());
   if(off)toast('Yapay zekâ özellikleri bu sürümde kullanılamıyor.');
   return off;
 }
+const AI_ON=!(window.Android&&typeof window.Android.aiAvailable==='function'&&!window.Android.aiAvailable());
+if(!AI_ON){document.getElementById('aiOffNote').hidden=false;document.querySelectorAll('.ai-off-tag').forEach(t=>{t.hidden=false;});}
 document.getElementById('pdfBtn').onclick=()=>{
   if(aiOff())return;
   if(window.Android && window.Android.pickPDF){
@@ -876,6 +1156,7 @@ document.getElementById('remBtn').onclick=()=>{
   document.getElementById('remTime').value = localISOTime;
   document.getElementById('remOv').classList.add('open');
 };
+document.getElementById('cityRem').onclick=()=>document.getElementById('remBtn').onclick();
 function saveReminder(){
   const city=document.getElementById('remCity').value.trim(),
         msg=document.getElementById('remMsg').value.trim()||`${city} hatırlatıcısı`,
@@ -934,7 +1215,7 @@ function confirmAI(){
   if(!city || !pendingAI) return;
   if(!DB[city]) DB[city] = [];
   const aiNote={
-    id: NoteIds.nextNoteId(DB),
+    id: NoteIds.nextNoteId(storedDB()),
     title: pendingAI.title,
     content: pendingAI.content,
     category: 'Genel',
@@ -955,11 +1236,13 @@ function confirmAI(){
 }
 
 // Stars
-function initStars(id,cb){document.getElementById(id).querySelectorAll('.star').forEach(s=>s.addEventListener('click',()=>{const v=+s.getAttribute('data-v');document.getElementById(id).querySelectorAll('.star').forEach((x,i)=>x.classList.toggle('on',i<v));cb(v);}));}
+function setStars(id,v){document.getElementById(id).querySelectorAll('.star').forEach((x,i)=>{x.classList.toggle('on',i<v);x.setAttribute('aria-pressed',String(i<v));});}
+function initStars(id,cb){document.getElementById(id).querySelectorAll('.star').forEach(s=>s.addEventListener('click',()=>{const v=+s.getAttribute('data-v');setStars(id,v);cb(v);}));}
 initStars('newStars',v=>{selStar=v;document.getElementById('starLabel').textContent='★'.repeat(v);});
 initStars('editStars',v=>{const n=DB[editingCity]?.find(n=>NoteIds.sameId(n.id,editingId));if(n){n.star=v;sv();mirrorNewNoteToRoom(editingCity,n);renderNotes();}});
-document.querySelectorAll('.color-opt').forEach(o=>o.addEventListener('click',()=>{document.querySelectorAll('.color-opt').forEach(x=>x.classList.remove('sel'));o.classList.add('sel');selColor=o.getAttribute('data-col');}));
-document.getElementById('cats').onclick=e=>{const c=e.target.closest('.cat');if(!c)return;document.querySelectorAll('.cat').forEach(x=>x.classList.remove('sel'));c.classList.add('sel');selCat=c.getAttribute('data-c');};
+function pickOne(selector,el){document.querySelectorAll(selector).forEach(x=>{x.classList.toggle('sel',x===el);x.setAttribute('aria-pressed',String(x===el));});}
+document.querySelectorAll('.color-opt').forEach(o=>o.addEventListener('click',()=>{pickOne('.color-opt',o);selColor=o.getAttribute('data-col');}));
+document.getElementById('cats').onclick=e=>{const c=e.target.closest('.cat');if(!c)return;pickOne('.cat',c);selCat=c.getAttribute('data-c');};
 
 // Weather
 const wxC={};
@@ -968,30 +1251,45 @@ function wxHTML(w){if(!w)return'<div class="wx-err">📡 Hava verisi alınamadı
 
 // Modal
 const ov=document.getElementById('ov');
-function openModal(city,bolge){
+let modalOpener=null;
+function resetAddForm(){
+  document.getElementById('nt').value='';document.getElementById('nc').value='';
+  selStar=0;selColor='';
+  setStars('newStars',0);
+  document.getElementById('starLabel').textContent='Puan ver';
+  pickOne('.color-opt',document.querySelector('.color-opt'));
+}
+function showAddForm(show){
+  const form=document.getElementById('noteForm');
+  form.hidden=!show;
+  document.getElementById('cityAdd').setAttribute('aria-expanded',String(show));
+  if(show){form.scrollIntoView({block:'nearest'});document.getElementById('nt').focus();}
+}
+// Called from renderNotes(), so the count follows every add, edit, delete, undo and import.
+function renderCityMeta(){
+  if(!curCity)return;
+  const city=curCity,ci=CITY_INFO[city],cnt=CityPick.count(DB,city);
+  const avg=cnt?(DB[city].reduce((a,n)=>a+(n.star||0),0)/cnt).toFixed(1):'—';
+  document.getElementById('mreg').textContent=(BOLGE_INFO[curBolge]||BOLGE_INFO.ic).l+' · '+cnt+' not';
+  document.getElementById('cityMeta').innerHTML=(ci?`<div class="city-meta-item"><div class="city-meta-val">${ci.pop}</div><div class="city-meta-lbl">Nüfus</div></div><div class="city-meta-item"><div class="city-meta-val">${ci.area}</div><div class="city-meta-lbl">Alan</div></div><div class="city-meta-item"><div class="city-meta-val">${ci.plaka}</div><div class="city-meta-lbl">Plaka</div></div>`:'')
+    +`<div class="city-meta-item"><div class="city-meta-val" id="cityCount">${cnt}</div><div class="city-meta-lbl">Not</div></div><div class="city-meta-item"><div class="city-meta-val">${avg}</div><div class="city-meta-lbl">Ort. puan</div></div>`;
+}
+function openModal(city,bolge,opts){
   if(!city)return;
   curCity=city;curBolge=bolge||IL_BOLGE[city]||'ic';
   const info=BOLGE_INFO[curBolge]||BOLGE_INFO.ic;
   document.getElementById('mname').textContent=city;
-  document.getElementById('mreg').textContent=info.l;
   document.getElementById('mdot').style.background=info.c;
-  document.getElementById('nt').value='';document.getElementById('nc').value='';
-  selStar=0;selColor='';
-  document.getElementById('newStars').querySelectorAll('.star').forEach(s=>s.classList.remove('on'));
-  document.getElementById('starLabel').textContent='Puan ver';
-  document.querySelectorAll('.color-opt').forEach((o,i)=>o.classList.toggle('sel',i===0));
-  const ci=CITY_INFO[city],cnt=(DB[city]&&DB[city].length)||0;
-  const avg=cnt?(DB[city].reduce((a,n)=>a+(n.star||0),0)/cnt).toFixed(1):'—';
-  document.getElementById('cityMeta').innerHTML=(ci?`<div class="city-meta-item"><div class="city-meta-val">${ci.pop}</div><div class="city-meta-lbl">Nüfus</div></div><div class="city-meta-item"><div class="city-meta-val">${ci.area}</div><div class="city-meta-lbl">Alan</div></div><div class="city-meta-item"><div class="city-meta-val">${ci.plaka}</div><div class="city-meta-lbl">Plaka</div></div>`:'')
-    +`<div class="city-meta-item"><div class="city-meta-val">${cnt}</div><div class="city-meta-lbl">Not</div></div><div class="city-meta-item"><div class="city-meta-val">${avg}</div><div class="city-meta-lbl">Ort.★</div></div>`;
+  resetAddForm();
   const wx=document.getElementById('wxWrap');
   wx.innerHTML='<div class="wx-loading"><div class="spinner" style="width:14px;height:14px;border-width:2px"></div> Hava yükleniyor…</div>';
   fetchWx(city).then(w=>wx.innerHTML=wxHTML(w));
 
-  // Akıllı Rehber Tetikleme
+  // Akıllı Rehber Tetikleme (yapay zekâ kapalıyken boş kutu gösterilmez)
   const guideWrap = document.getElementById('aiGuideWrap');
   const guideContent = document.getElementById('aiGuideContent');
-  guideWrap.style.display = 'block';
+  guideWrap.style.display = AI_ON ? 'block' : 'none';
+  if(AI_ON){
   guideContent.innerHTML = '<div class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;margin-right:5px"></div> Bilgiler derleniyor...';
 
   if(window.Android && window.Android.getCityGuide){
@@ -999,54 +1297,119 @@ function openModal(city,bolge){
   } else {
       guideContent.textContent = "Rehber özelliği şu an aktif değil.";
   }
+  }
 
-  renderNotes();ov.classList.add('open');document.body.style.overflow='hidden';
+  renderNotes();
+  if(!ov.classList.contains('open'))modalOpener=(opts&&opts.opener)||document.activeElement;
+  ov.classList.add('open');document.body.style.overflow='hidden';
+  document.getElementById('modalEl').scrollTop=0;
+  showAddForm(!!(opts&&opts.add));
+  if(!(opts&&opts.add))document.getElementById('mname').focus({preventScroll:true});
 }
 
 function onCityGuideReady(content) {
     document.getElementById('aiGuideContent').innerHTML = content;
 }
 
-function closeModal(){ov.classList.remove('open');document.body.style.overflow='';curCity=null;curBolge=null;}
+function closeModal(){
+  ov.classList.remove('open');document.body.style.overflow='';curCity=null;curBolge=null;showAddForm(false);
+  if(modalOpener&&document.body.contains(modalOpener))modalOpener.focus({preventScroll:true});
+  modalOpener=null;
+}
+document.getElementById('cityAdd').onclick=()=>showAddForm(true);
+document.getElementById('addCancel').onclick=()=>{resetAddForm();showAddForm(false);document.getElementById('cityAdd').focus();};
+
+// "+ Not Ekle": choose the city from the list or from the phone's position, never a guessed one.
+const pickOv=document.getElementById('pickOv');
+let pickOpener=null,pickOpenedAt=0;
+function renderPick(){
+  const rows=CityPick.search(document.getElementById('pickQ').value,Object.keys(CITY_COORDS),DB);
+  document.getElementById('pickCount').textContent=rows.length?rows.length+' il':'';
+  document.getElementById('pickList').innerHTML=rows.length?rows.map(r=>{const b=IL_BOLGE[r.city]||'ic';return `<li><button type="button" class="pick-row" data-city="${esc(r.city)}"><span class="mdot" style="background:${BOLGE_INFO[b].c}" aria-hidden="true"></span><span class="pick-name">${esc(r.city)}</span><span class="pick-sub">${BNAMES[b]}${r.count?' · '+r.count+' not':''}</span></button></li>`;}).join(''):
+    '<li class="pick-empty">Eşleşen il yok. Yazımı kontrol edin.</li>';
+}
+function openPicker(opener){
+  pickOpener=opener||document.activeElement;
+  document.getElementById('pickQ').value='';renderPick();
+  pickOv.classList.add('open');pickOpenedAt=Date.now();document.getElementById('pickList').scrollTop=0;
+  document.getElementById('pickTitle').focus();
+}
+function closePicker(restore){
+  pickOv.classList.remove('open');
+  if(restore!==false&&pickOpener&&document.body.contains(pickOpener))pickOpener.focus({preventScroll:true});
+  pickOpener=null;
+}
+function pickCity(city){
+  if(!CITY_COORDS[city])return;
+  const opener=pickOpener;closePicker(false);
+  if(lmap)lmap.setView(CITY_COORDS[city],Math.max(lmap.getZoom(),7),{animate:false});
+  openModal(city,IL_BOLGE[city]||'ic',{add:true,opener});
+}
+document.getElementById('pickQ').oninput=renderPick;
+// The list opens under the finger that tapped "+ Not Ekle"; a stray second click must not pick a city.
+document.getElementById('pickList').addEventListener('click',e=>{const b=e.target.closest('[data-city]');if(b&&Date.now()-pickOpenedAt>400)pickCity(b.dataset.city);});
+document.getElementById('pickClose').onclick=()=>closePicker();
+document.getElementById('pickGps').onclick=()=>findMyCity(city=>{if(pickOv.classList.contains('open'))pickCity(city);});
+pickOv.addEventListener('click',e=>{if(e.target===pickOv)closePicker();});
 
 // Android Back Button Bridge
 function handleAndroidBack() {
+    // Güncelleme penceresinde geri tuşu "Daha Sonra / İptal / Kapat" ile aynıdır.
+    if (updIsOpen()) {
+        updLaterAction();
+        return true;
+    }
+    // Silme onayı düzenleme penceresinin üstündedir; önce o kapanır.
+    if (document.getElementById('delOv').classList.contains('open')) {
+        closeDelete();
+        return true;
+    }
     // 0. Veri güvenliği penceresi açıksa kapat
     if (document.getElementById('dsOv').classList.contains('open')) {
         dsCloseDialog();
         return true;
     }
-    // 1. Drawer açıksa kapat
-    if (document.getElementById('drawer').classList.contains('open')) {
-        toggleDr(false);
+    // İçe aktarma önizlemesi: geri tuşu "Vazgeç" ile aynıdır, notlar değişmez.
+    if (document.getElementById('impOv').classList.contains('open')) {
+        document.getElementById('impCancel').click();
         return true;
     }
-    // 2. Şehir modalı açıksa kapat
-    if (document.getElementById('ov').classList.contains('open')) {
-        closeModal();
-        return true;
-    }
-    // 3. Düzenleme modalı açıksa kapat
+    // 1. Düzenleme penceresi şehir panelinin üstündedir; önce o kapanır.
     if (document.getElementById('editOv').classList.contains('open')) {
         closeEdit();
         return true;
     }
-    // 4. AI Onay modalı açıksa kapat
+    // 2. AI Onay modalı açıksa kapat
     if (document.getElementById('aiOv').classList.contains('open')) {
         closeAIOv();
         return true;
     }
-    // 5. Hatırlatıcı modalı açıksa kapat
+    // 3. Hatırlatıcı modalı açıksa kapat
     if (document.getElementById('remOv').classList.contains('open')) {
         document.getElementById('remOv').classList.remove('open');
         return true;
     }
-    // 6. Ses kayıt modalı açıksa kapat
+    // 4. Ses kayıt modalı açıksa kapat
     if (document.getElementById('micOv').classList.contains('open')) {
         document.getElementById('micOv').classList.remove('open');
         return true;
     }
-    return false; // Hiçbir şey açık değilse uygulamadan çıkış onayına geç
+    // 5. Şehir seçimi açıksa kapat
+    if (document.getElementById('pickOv').classList.contains('open')) {
+        closePicker();
+        return true;
+    }
+    // 6. Şehir paneli açıksa kapat
+    if (document.getElementById('ov').classList.contains('open')) {
+        closeModal();
+        return true;
+    }
+    // 7. Harita dışındaki bir sekmedeyse haritaya dön
+    if (curView !== 'map') {
+        showView('map', true);
+        return true;
+    }
+    return false; // Haritada ve hiçbir şey açık değilse uygulamadan çıkış onayına geç
 }
 document.getElementById('mcl').onclick=closeModal;
 ov.addEventListener('click',e=>{if(e.target===ov)closeModal();});
@@ -1530,17 +1893,14 @@ if(RF_INFO&&RF_INFO.available===true)rfLoadStatus();
 document.getElementById('ba').onclick=()=>{
   if(!curCity)return;
   const t=document.getElementById('nt').value.trim(),c=document.getElementById('nc').value.trim();
-  if(!t){toast('Lütfen bir başlık girin.');return;}
+  if(!t){toast('Lütfen bir başlık girin.');document.getElementById('nt').focus();return;}
   if(!DB[curCity])DB[curCity]=[];
-  const newNote={id:NoteIds.nextNoteId(DB),title:t,content:c,category:selCat,star:selStar,color:selColor,fav:false,date:new Date().toLocaleDateString('tr-TR',{day:'2-digit',month:'short',year:'numeric'})};
+  const newNote={id:NoteIds.nextNoteId(storedDB()),title:t,content:c,category:selCat,star:selStar,color:selColor,fav:false,date:new Date().toLocaleDateString('tr-TR',{day:'2-digit',month:'short',year:'numeric'})};
   DB[curCity].push(newNote);
   mirrorNewNoteToRoom(curCity,newNote);
-  sv();document.getElementById('nt').value='';document.getElementById('nc').value='';
-  selStar=0;selColor='';
-  document.getElementById('newStars').querySelectorAll('.star').forEach(s=>s.classList.remove('on'));
-  document.getElementById('starLabel').textContent='Puan ver';
-  document.querySelectorAll('.color-opt').forEach((o,i)=>o.classList.toggle('sel',i===0));
+  sv();resetAddForm();showAddForm(false);
   renderNotes();updateStyles();updateSum();toast(`${curCity} — not eklendi ✓`);
+  document.getElementById('cityAdd').focus({preventScroll:true});
 };
 const roomDeletePending=new Set();
 window.onRoomDeleteResult=function(requestId,ok,error){
@@ -1557,7 +1917,97 @@ function mirrorDeletedNoteToRoom(city,id){
   try{window.Android.deleteRoomNote(city,String(id),requestId);}
   catch(e){roomDeletePending.delete(requestId);console.warn('Room shadow-delete unavailable',e);toast('⚠️ Room silme işlemi gönderilemedi');}
 }
-function delNote(city,id){if(!DB[city])return;DB[city]=DB[city].filter(n=>!NoteIds.sameId(n.id,id));if(!DB[city].length)delete DB[city];sv();mirrorDeletedNoteToRoom(city,id);renderNotes();updateStyles();updateSum();toast('Not silindi');}
+// Single-note deletion: only from the edit dialog, after a confirmation naming the note.
+// Outside Room-first mode it stays undoable for UNDO_MS; the saved copy and Room change only
+// when it becomes final (timer, app hidden, or Yedek tab opened), so undo never touches Room.
+const UNDO_MS=8000;
+let delTarget=null,delOpener=null,undoAnnounce=0;
+function refreshNoteViews(){renderNotes();updateStyles();updateSum();if(document.getElementById('tab-favs').classList.contains('on'))renderFavs();}
+function onNoteDelete(event,info){
+  const bar=document.getElementById('undoBar'),text=document.getElementById('undoText');
+  clearTimeout(undoAnnounce);
+  if(event==='removed'){
+    bar.hidden=false;document.body.classList.add('undo-on');text.textContent='';
+    // Set after showing so screen readers announce the live region.
+    undoAnnounce=setTimeout(()=>{text.textContent=`“${info.title||'Başlıksız not'}” silindi.`;},60);
+    return;
+  }
+  const hadFocus=bar.contains(document.activeElement);
+  bar.hidden=true;document.body.classList.remove('undo-on');text.textContent='';
+  if(hadFocus){if(document.getElementById('ov').classList.contains('open'))document.getElementById('cityAdd').focus({preventScroll:true});else{const h=document.querySelector('#view-'+curView+' h2');if(h)h.focus({preventScroll:true});}}
+  if(event==='undone'){refreshNoteViews();toast('Not geri alındı');}
+  else if(event==='failed'){refreshNoteViews();toast('⚠️ Not silinemedi; not korundu.');}
+}
+noteDel=RF_MODE?null:NoteDelete.create({
+  getDB:()=>DB,setDB:d=>{DB=d;},
+  storage:{get:k=>localStorage.getItem(k),set:(k,v)=>localStorage.setItem(k,v),remove:k=>localStorage.removeItem(k)},
+  persist:sv,mirrorDelete:mirrorDeletedNoteToRoom,
+  schedule:(fn,ms)=>setTimeout(fn,ms),cancel:h=>clearTimeout(h),now:()=>Date.now(),windowMs:UNDO_MS,
+  onChange:onNoteDelete
+});
+function askDelete(){
+  const n=DB[editingCity]?.find(n=>NoteIds.sameId(n.id,editingId));if(!n)return;
+  delTarget={city:editingCity,id:editingId};
+  document.getElementById('delText').textContent=`“${n.title||'Başlıksız not'}” notu silinecek. `+
+    (noteDel?`Sildikten sonra ${UNDO_MS/1000} saniye içinde “Geri Al” ile geri getirebilirsiniz.`:'Bu işlem geri alınamaz.');
+  delOpener=document.activeElement;
+  document.getElementById('delOv').classList.add('open');
+  document.getElementById('delCancel').focus();
+}
+function closeDelete(){
+  document.getElementById('delOv').classList.remove('open');delTarget=null;
+  if(delOpener&&document.body.contains(delOpener))delOpener.focus();
+  delOpener=null;
+}
+function confirmDelete(){
+  const t=delTarget;delOpener=null;closeDelete();closeEdit();
+  if(!t)return;
+  if(!noteDel){delNote(t.city,t.id);return;}
+  if(!noteDel.remove(t.city,t.id)){toast('⚠️ Not silinemedi; hiçbir şey değişmedi.');return;}
+  refreshNoteViews();
+  // The note's own Düzenle button is gone after re-rendering.
+  if(document.getElementById('ov').classList.contains('open'))document.getElementById('cityAdd').focus({preventScroll:true});
+}
+// Room-first prototype (debug only): immediate, confirmed deletion without undo.
+function delNote(city,id){if(!DB[city])return;DB[city]=DB[city].filter(n=>!NoteIds.sameId(n.id,id));if(!DB[city].length)delete DB[city];sv();mirrorDeletedNoteToRoom(city,id);refreshNoteViews();toast('Not silindi');}
+document.getElementById('delCancel').onclick=closeDelete;
+document.getElementById('delConfirm').onclick=confirmDelete;
+document.getElementById('delOv').addEventListener('click',e=>{if(e.target===document.getElementById('delOv'))closeDelete();});
+document.getElementById('undoBtn').onclick=()=>{if(noteDel)noteDel.undo();};
+const settleDelete=()=>{if(noteDel)noteDel.commit();};
+document.addEventListener('visibilitychange',()=>{if(document.hidden)settleDelete();});
+window.addEventListener('pagehide',settleDelete);
+// A confirmed import whose notes may not have reached disk before the app was stopped is finished from
+// its staged copy. Runs before the deletion recovery and the Room reconciliation, which then see the notes.
+function resumeImports(){
+  if(RF_MODE||!(window.Android&&typeof window.Android.resumeRoomImports==='function'))return;
+  let r=null;
+  try{r=JSON.parse(window.Android.resumeRoomImports(localStorage.getItem(NKEY)||'{}'));}catch(e){r={error:true};}
+  if(!r||r.error){console.error('[ImportResume] failed');setTimeout(()=>toast('⚠️ Yarım kalan içe aktarma denetlenemedi; bir sonraki açılışta yeniden denenecek.'),1500);return;}
+  const incoming={};
+  (r.notes||[]).forEach(([city,note])=>{(incoming[city]=incoming[city]||[]).push(note);});
+  const before=JSON.stringify(DB);
+  const added=NoteIds.mergeNotes(DB,incoming);
+  let msg='';
+  if(added){
+    try{sv();msg=`Yarım kalan içe aktarma tamamlandı: ${added} not geri yüklendi.`;}
+    catch(e){DB=JSON.parse(before);msg='⚠️ Yarım kalan içe aktarma kaydedilemedi (telefonda yer yok); bir sonraki açılışta yeniden denenecek.';}
+  }
+  console.info('[ImportResume] resumed='+added+' confirmed='+r.confirmed+' dropped='+r.dropped+' reported='+r.reported+' unreadable='+r.unreadable);
+  if(r.reported||r.unreadable){
+    const w='⚠️ Yarım kalan bir içe aktarmadaki bazı notlar doğrulanamadığı için otomatik eklenmedi. Notlarınız değişmedi; sonradan düzenlediğiniz bir notun son hâli Veri Güvenliği’nde görünür. JSON dosyasını yeniden içe aktarabilirsiniz.';
+    setTimeout(()=>fileStatus('importStatus',w,'error'),0);
+    msg=msg?msg+' '+w:w;
+  }
+  if(msg)setTimeout(()=>{refreshNoteViews();toast(msg);},1500);
+}
+resumeImports();
+// Runs before the load-time Room reconciliation.
+if(noteDel){
+  const r=noteDel.recover();
+  if(r)console.info('[NoteDelete] recover '+r.state);
+  if(r&&r.state==='kept')setTimeout(()=>toast(`Uygulama silme tamamlanmadan kapandı; “${r.title||'Başlıksız not'}” korundu.`),1500);
+}
 function toggleFav(city,id){const n=DB[city]?.find(n=>NoteIds.sameId(n.id,id));if(!n)return;n.fav=!n.fav;sv();mirrorNewNoteToRoom(city,n);renderNotes();updateSum();if(document.getElementById('tab-favs').classList.contains('on')) renderFavs();toast(n.fav?'❤️ Favorilere eklendi':'Favorilerden çıkarıldı');}
 
 function renderFavs(){
@@ -1578,14 +2028,15 @@ function renderFavs(){
     <div class="nih"><div class="nit">📍 ${esc(n.cityName)}: ${n.isAI ? '✨' : ''}${CEMOJI[n.category]||'📝'} ${esc(n.title)}</div><div class="nid">${n.date}</div></div>
     ${n.content?`<div class="nic">${esc(n.content)}</div>`:''}
     <div class="nacts">
-      <button class="nbtn" onclick="openModal('${esc(n.cityName)}','${IL_BOLGE[n.cityName]||'ic'}')">🏙️ Şehre Git</button>
-      <button class="nbtn" onclick="toggleFav('${esc(n.cityName)}',${NoteIds.idArg(n.id)})">💔 Çıkar</button>
-      <button class="nbtn" onclick="shareNote('${esc(n.cityName)}', ${NoteIds.idArg(n.id)})">📤 Paylaş</button>
+      <button type="button" class="nbtn" aria-label="${esc(n.cityName+' şehrini aç')}" onclick="openModal('${esc(n.cityName)}','${IL_BOLGE[n.cityName]||'ic'}')"><span aria-hidden="true">🏙️</span> Şehre Git</button>
+      <button type="button" class="nbtn" aria-label="${esc('Favorilerden çıkar: '+n.title)}" onclick="toggleFav('${esc(n.cityName)}',${NoteIds.idArg(n.id)})"><span aria-hidden="true">💔</span> Çıkar</button>
+      <button type="button" class="nbtn" aria-label="${esc('Paylaş: '+n.title)}" onclick="shareNote('${esc(n.cityName)}', ${NoteIds.idArg(n.id)})"><span aria-hidden="true">📤</span> Paylaş</button>
     </div></div>`).join('');
 }
-function openEdit(city,id){const n=DB[city]?.find(n=>NoteIds.sameId(n.id,id));if(!n)return;editingCity=city;editingId=id;document.getElementById('eTitle').value=n.title;document.getElementById('eContent').value=n.content||'';document.getElementById('editStars').querySelectorAll('.star').forEach((s,i)=>s.classList.toggle('on',i<(n.star||0)));document.getElementById('editOv').classList.add('open');}
+let editOpener=null;
+function openEdit(city,id){const n=DB[city]?.find(n=>NoteIds.sameId(n.id,id));if(!n)return;editingCity=city;editingId=id;editOpener=document.activeElement;document.getElementById('eTitle').value=n.title;document.getElementById('eContent').value=n.content||'';setStars('editStars',n.star||0);document.getElementById('editOv').classList.add('open');document.getElementById('editTitle').focus();}
 function saveEdit(){const n=DB[editingCity]?.find(n=>NoteIds.sameId(n.id,editingId));if(!n)return;n.title=document.getElementById('eTitle').value.trim()||n.title;n.content=document.getElementById('eContent').value.trim();sv();mirrorNewNoteToRoom(editingCity,n);renderNotes();updateSum();closeEdit();toast('Not güncellendi ✓');}
-function closeEdit(){document.getElementById('editOv').classList.remove('open');editingCity=null;editingId=null;}
+function closeEdit(){document.getElementById('editOv').classList.remove('open');editingCity=null;editingId=null;if(editOpener&&document.body.contains(editOpener))editOpener.focus({preventScroll:true});else if(document.getElementById('ov').classList.contains('open'))document.getElementById('mname').focus({preventScroll:true});editOpener=null;}
 document.getElementById('editOv').addEventListener('click',e=>{if(e.target===document.getElementById('editOv'))closeEdit();});
 function shareNote(city, id) {
   const n = DB[city || curCity]?.find(x => NoteIds.sameId(x.id, id));
@@ -1600,17 +2051,17 @@ function shareNote(city, id) {
 
 function renderNotes(){
   const nl=document.getElementById('nl'),nb=document.getElementById('nb');
+  renderCityMeta();
   const ns=(curCity&&DB[curCity])||[];nb.textContent=ns.length;
-  if(!ns.length){nl.innerHTML='<div class="nemp">Henüz not yok.<br>Yukarıdan ilk notunu ekle ↑</div>';return;}
+  if(!ns.length){nl.innerHTML='<div class="nemp">Henüz not yok.<br>“Not ekle” ile ilk notunu ekle.</div>';return;}
   nl.innerHTML=[...ns].reverse().map(n=>`<div class="ni" style="border-left-color:${n.color||BOLGE_INFO[curBolge||'ic'].c};background:${n.color?n.color+'22':''}">
     <div class="nih"><div class="nit">${n.isAI ? '<span title="AI Özeti" style="margin-right:4px">✨</span>' : ''}${CEMOJI[n.category]||'📝'} ${esc(n.title)}${n.fav?' ⭐':''}${RF_MODE?rfBadge(curCity,n.id):''}</div><div class="nid">${n.date}</div></div>
     ${n.content?`<div class="nic">${esc(n.content)}</div>`:''}
     ${n.star?`<div class="nstars" style="color:#f59e0b">${'★'.repeat(n.star)}${'☆'.repeat(5-n.star)}</div>`:''}
     <div class="nacts">
-      <button class="nbtn del" onclick="delNote('${esc(curCity)}',${NoteIds.idArg(n.id)})">🗑️ Sil</button>
-      <button class="nbtn" onclick="openEdit('${esc(curCity)}',${NoteIds.idArg(n.id)})">✏️ Düzenle</button>
-      <button class="nbtn" onclick="toggleFav('${esc(curCity)}',${NoteIds.idArg(n.id)})">${n.fav?'★':'☆'} Favori</button>
-      <button class="nbtn" onclick="shareNote('${esc(curCity)}', ${NoteIds.idArg(n.id)})">📤 Paylaş</button>
+      <button type="button" class="nbtn" aria-label="${esc('Düzenle: '+n.title)}" onclick="openEdit('${esc(curCity)}',${NoteIds.idArg(n.id)})"><span aria-hidden="true">✏️</span> Düzenle</button>
+      <button type="button" class="nbtn" aria-label="${esc('Favori: '+n.title)}" aria-pressed="${!!n.fav}" onclick="toggleFav('${esc(curCity)}',${NoteIds.idArg(n.id)})"><span aria-hidden="true">${n.fav?'★':'☆'}</span> Favori</button>
+      <button type="button" class="nbtn" aria-label="${esc('Paylaş: '+n.title)}" onclick="shareNote('${esc(curCity)}', ${NoteIds.idArg(n.id)})"><span aria-hidden="true">📤</span> Paylaş</button>
     </div></div>`).join('');
 }
 
@@ -1624,8 +2075,8 @@ function updateSum(){
   else if(sortMode==='fav')cs=cs.filter(c=>DB[c].some(n=>n.fav)).sort((a,b)=>a.localeCompare(b,'tr'));
   else cs.sort((a,b)=>DB[b].length-DB[a].length);
   ab.textContent=cs.length;
-  if(!cs.length){sl.innerHTML='<div class="emp"><span class="eico">🗺️</span>Henüz notlu şehir yok.<br>Haritadan bir şehre dokun!</div>';return;}
-  sl.innerHTML=cs.map(c=>{const b=IL_BOLGE[c]||'ic',info=BOLGE_INFO[b]||BOLGE_INFO.ic;const avg=DB[c].length?(DB[c].reduce((a,n)=>a+(n.star||0),0)/DB[c].length).toFixed(1):null;return`<div class="cc" style="border-left-color:${info.c}" onclick="openModal('${esc(c)}','${b}')"><div class="ccl"><div><div class="cn">${esc(c)}${DB[c].some(n=>n.fav)?' ⭐':''}</div><div class="cr">${info.l}</div></div></div><div class="cct"><div class="cnum">${DB[c].length}</div><div class="clb">${avg?'★'+avg:'not'}</div></div></div>`;}).join('');
+  if(!cs.length){sl.innerHTML=q?'<div class="emp">Eşleşen şehir yok.</div>':'<div class="emp"><span class="eico" aria-hidden="true">🗺️</span>Henüz notlu şehir yok.<br>Haritada bir şehre dokunun ya da “Not Ekle”yi kullanın.<br><button type="button" class="city-btn primary" style="margin-top:10px" onclick="openPicker(this)"><span aria-hidden="true">＋</span> Not Ekle</button></div>';return;}
+  sl.innerHTML=cs.map(c=>{const b=IL_BOLGE[c]||'ic',info=BOLGE_INFO[b]||BOLGE_INFO.ic;const avg=DB[c].length?(DB[c].reduce((a,n)=>a+(n.star||0),0)/DB[c].length).toFixed(1):null;return`<button type="button" class="cc" style="border-left-color:${info.c}" onclick="openModal('${esc(c)}','${b}')" aria-label="${esc(c+', '+info.l+', '+DB[c].length+' not'+(avg?', ortalama puan '+avg:''))}"><span class="ccl"><span><span class="cn">${esc(c)}${DB[c].some(n=>n.fav)?' ⭐':''}</span><span class="cr">${info.l}</span></span></span><span class="cct"><span class="cnum">${DB[c].length}</span><span class="clb">${avg?'★'+avg:'not'}</span></span></button>`;}).join('');
 }
 
 function renderStats(){
@@ -1654,33 +2105,289 @@ function renderStats(){
   document.getElementById('regionChart').innerHTML=Object.entries(regs).sort((a,b)=>b[1]-a[1]).map(([r,v])=>`<div class="bar-row"><div class="bar-label">${BNAMES[r]||r}</div><div class="bar-track"><div class="bar-fill" style="width:${(v/mr*100).toFixed(0)}%;background:${(BOLGE_INFO[r]||{c:'#999'}).c}">${v}</div></div></div>`).join('')||'<div style="color:var(--txt3);font-size:12px">Henüz not yok.</div>';
 }
 
-function exportJSON(){const b=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`turkiye-notlari-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);toast('📥 JSON indirildi');}
-function importJSON(inp){const f=inp.files[0];if(!f)return;const reader=new FileReader();reader.onload=e=>{try{const d=JSON.parse(e.target.result);const cnt=NoteIds.mergeNotes(DB,d,mirrorNewNoteToRoom);sv();updateStyles();updateSum();toast(`✅ ${cnt} not içe aktarıldı`);}catch{toast('❌ Geçersiz dosya');}inp.value='';};reader.readAsText(f);}
+// JSON backup. The Android app saves and opens the file through the system file screens (NotesFile.kt)
+// and reports back through onNotesFileSaved / onNotesFileOpened; a browser uses a download link and a
+// file input. Every import is checked and previewed, and merges only after the user confirms.
+let exportBusy=false,exportCount=0,pendingImport=null,impOpener=null,impStatusId='importStatus';
+const androidFiles=()=>!!(window.Android&&typeof window.Android.exportNotesFile==='function'&&typeof window.Android.pickNotesFile==='function');
+function fileStatus(id,msg,kind){const el=document.getElementById(id);el.textContent=msg;el.dataset.kind=kind||'';}
+function exportJSON(){
+  const text=JSON.stringify(DB,null,2);exportCount=NotesFile.count(DB);
+  if(androidFiles()){
+    if(exportBusy)return;
+    exportBusy=true;fileStatus('exportStatus','Kaydetme ekranı açılıyor…');
+    window.Android.exportNotesFile(text,NotesFile.fileName(new Date()));
+    return;
+  }
+  const b=new Blob([text],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=NotesFile.fileName(new Date());a.click();URL.revokeObjectURL(a.href);toast('📥 JSON indirildi');
+}
+// Success is reported only after Android has written the whole file.
+window.onNotesFileSaved=function(r){
+  exportBusy=false;
+  if(r.status==='ok'){const m=`✅ Yedek kaydedildi: ${r.name||'JSON dosyası'} (${exportCount} not)`;fileStatus('exportStatus',m,'ok');toast(m);}
+  else if(r.status==='cancel')fileStatus('exportStatus','Kaydetme iptal edildi; dosya oluşturulmadı.');
+  else{const m='⚠️ '+(r.message||'Yedek kaydedilemedi.');fileStatus('exportStatus',m,'error');toast(m);}
+};
+function pickImportFile(){
+  if(androidFiles()){fileStatus('importStatus','Dosya seçme ekranı açılıyor…');window.Android.pickNotesFile();return;}
+  document.getElementById('restoreFile').click();
+}
+window.onNotesFileOpened=function(r){
+  if(r.status==='ok')previewImport(r.text,r.name);
+  else if(r.status==='cancel')fileStatus('importStatus','Dosya seçilmedi; notlarınız değişmedi.');
+  else{fileStatus('importStatus','⚠️ '+(r.message||'Dosya okunamadı.')+' Notlarınız değişmedi.','error');toast('⚠️ '+(r.message||'Dosya okunamadı.'));}
+};
+function importJSON(inp){
+  const f=inp.files[0];inp.value='';if(!f)return;
+  if(f.size>NotesFile.MAX_BYTES){fileStatus('importStatus','⚠️ Dosya çok büyük (en fazla 5 MB). Notlarınız değişmedi.','error');return;}
+  const reader=new FileReader();
+  reader.onload=e=>previewImport(e.target.result,f.name);
+  reader.onerror=()=>fileStatus('importStatus','⚠️ Dosya okunamadı. Notlarınız değişmedi.','error');
+  reader.readAsText(f);
+}
+function previewImport(text,name){
+  settleDelete();
+  const p=NotesFile.parse(text);
+  if(!p.ok){fileStatus('importStatus','⚠️ '+p.error+' Notlarınız değişmedi.','error');toast('⚠️ '+p.error);return;}
+  const pv=NotesFile.preview(DB,p.data);
+  pendingImport=pv.added?p.data:null;impStatusId='importStatus';
+  document.getElementById('impConfirm').textContent='İçe aktar';
+  document.getElementById('impText').textContent=`“${name||'Seçilen dosya'}”: ${p.cities} şehirde ${p.notes} not.`;
+  document.getElementById('impDetail').textContent=pv.added
+    ?`${pv.added} yeni not eklenecek.${pv.skipped?` ${pv.skipped} not zaten kayıtlı olduğu için atlanacak.`:''} Mevcut ${NotesFile.count(DB)} notunuz silinmez ve değiştirilmez.`
+    :'Bu dosyadaki notların hepsi zaten kayıtlı; eklenecek yeni not yok. Notlarınız değişmedi.';
+  document.getElementById('impTitle').textContent=pv.added?'Yedek içe aktarılsın mı?':'Yedek kontrol edildi';
+  document.getElementById('impConfirm').hidden=!pv.added;
+  document.getElementById('impCancel').textContent=pv.added?'Vazgeç':'Tamam';
+  fileStatus('importStatus','');
+  impOpener=document.activeElement;
+  document.getElementById('impOv').classList.add('open');
+  document.getElementById('impTitle').focus();
+}
+function closeImport(){
+  document.getElementById('impOv').classList.remove('open');pendingImport=null;cloudRestore=null;document.getElementById('impDeletedRow').hidden=true;
+  if(impOpener&&document.body.contains(impOpener))impOpener.focus({preventScroll:true});impOpener=null;
+}
+// Same merge as before (NoteIds.mergeNotes); Room changes only after the new notes are saved.
+// On Android the notes are staged on disk first: a successful setItem is not yet on disk.
+function applyImport(d){
+  settleDelete();
+  const before=JSON.stringify(storedDB()),added=[];
+  const cnt=NoteIds.mergeNotes(DB,d,(city,note)=>added.push([city,note]));
+  const restore=recordRoomRestore(added);
+  if(restore&&!restore.recorded){DB=JSON.parse(before);refreshNoteViews();return{ok:false,error:'İçe aktarma güvenli biçimde hazırlanamadı (telefonda yer kalmamış olabilir); hiçbir not eklenmedi.'};}
+  try{sv();}
+  catch(e){DB=JSON.parse(before);refreshNoteViews();cancelRoomRestore(restore);return{ok:false,error:'Telefonda yeterli yer yok; hiçbir not eklenmedi.'};}
+  finishRoomRestore(restore);
+  refreshNoteViews();
+  return{ok:true,count:cnt,pending:!!restore};
+}
+// Room copy of a confirmed import. Native journals a restore record for exactly these notes before
+// tur_v10 is written, then reads each note back from the stored text; only a matching record may revive
+// a Room deletion record left by an earlier delete (all notes or none). A restore cut off by a crash is
+// finished from the record at the next start.
+const roomRestorePending=new Map();
+let roomRestoreRetry=null;
+function recordRoomRestore(notes){
+  roomRestoreRetry=null;document.getElementById('impRoomRetry').hidden=true;
+  if(RF_MODE||!notes.length||!(window.Android&&typeof window.Android.beginRoomRestore==='function'))return null;
+  const requestId='restore-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+  let recorded=false;
+  try{recorded=window.Android.beginRoomRestore(JSON.stringify(notes),requestId)===true;}catch(e){}
+  return{requestId,pairs:notes.map(([city,note])=>[city,note.id]),recorded};
+}
+function finishRoomRestore(r,retry){
+  if(!r)return;
+  if(!r.recorded){roomRestoreFailed(r.pairs,'Restore record failed');return;}
+  roomRestorePending.set(r.requestId,{pairs:r.pairs,retry:!!retry,status:impStatusId});
+  try{window.Android.restoreRoomNotes(localStorage.getItem('tur_v10')||'{}',r.requestId);}
+  catch(e){roomRestorePending.delete(r.requestId);roomRestoreFailed(r.pairs,'Room bridge unavailable');}
+}
+function cancelRoomRestore(r){
+  if(r&&r.recorded)try{window.Android.cancelRoomRestore(r.requestId);}catch(e){}
+}
+function roomRestoreFailed(pairs,error){
+  console.error('Room restore failed:',error);
+  roomRestoreRetry=pairs;document.getElementById('impRoomRetry').hidden=false;
+  fileStatus('importStatus','⚠️ Notlar telefona kaydedildi ama Room kopyası güncellenemedi. Notlarınız güvende; “Room kopyasını yeniden dene” ile tekrar deneyebilirsiniz.','error');
+  toast('⚠️ Notlar telefonda güvende; Room kopyası güncellenemedi');
+}
+window.onRoomRestoreResult=function(requestId,result,error){
+  const req=roomRestorePending.get(requestId);
+  if(!req){console.info('[RoomBridge] restore result for unknown request');return;}
+  roomRestorePending.delete(requestId);
+  if(error||!result){roomRestoreFailed(req.pairs,error||'Empty result');return;}
+  console.info('[RoomBridge] restore added='+result.added+' revived='+result.revived+' replaced='+result.replaced+' unchanged='+result.unchanged+' stale='+result.stale);
+  if(req.retry)fileStatus('importStatus','✅ Room kopyası güncellendi; notlar iki yerde de aynı.','ok');
+  else{const m=`✅ ${req.pairs.length} not içe aktarıldı`;fileStatus(req.status||'importStatus',m,'ok');toast(m);}
+  if(dsPhase!=='checking')dsRecheck();
+};
+document.getElementById('impRoomRetry').onclick=()=>{
+  const s=storedDB();
+  // A note deleted since the import is no longer restored; the others are recorded again as stored.
+  const notes=[];
+  (roomRestoreRetry||[]).forEach(([city,id])=>{const n=(s[city]||[]).find(x=>NoteIds.sameId(x.id,id));if(n)notes.push([city,n]);});
+  fileStatus('importStatus','Room kopyası yeniden deneniyor…');
+  const r=recordRoomRestore(notes);
+  if(r)finishRoomRestore(r,true);
+  else fileStatus('importStatus','Yeniden denenecek not kalmadı; notlarınız değişmedi.');
+};
+function confirmImport(){
+  const d=pendingImport;closeImport();if(!d)return;
+  const r=applyImport(d);
+  // A Room warning raised during the import already says the notes were saved; it must stay visible.
+  if(r.ok&&roomRestoreRetry)return;
+  // Success is shown when the Room copy answers (onRoomRestoreResult); the staged copy keeps the notes meanwhile.
+  if(r.ok&&r.pending){fileStatus(impStatusId,`${r.count} not ekleniyor; kayıt tamamlanıyor…`);return;}
+  if(r.ok){const m=`✅ ${r.count} not içe aktarıldı`;fileStatus(impStatusId,m,'ok');toast(m);}
+  else{fileStatus(impStatusId,'⚠️ '+r.error,'error');toast('⚠️ '+r.error);}
+}
+document.getElementById('impCancel').onclick=()=>{
+  const had=!!pendingImport,cloud=!!cloudRestore;closeImport();
+  if(cloud)fileStatus('cloudStatus',had?'Geri yükleme iptal edildi; notlarınız değişmedi.':'Yedekteki notlar telefonda zaten var; notlarınız değişmedi.');
+  else fileStatus('importStatus',had?'İçe aktarma iptal edildi; notlarınız değişmedi.':'Dosyadaki notlar zaten kayıtlı; notlarınız değişmedi.');
+};
+document.getElementById('impConfirm').onclick=confirmImport;
+document.getElementById('impOv').addEventListener('click',e=>{if(e.target===document.getElementById('impOv'))document.getElementById('impCancel').click();});
+
+// ── BULUT YEDEKLEME ── Google oturumu ve Firestore native katmandadır (cloud/*.kt); sonuçlar
+// onCloudResult ile gelir. Bir yedek ancak sunucuda tamamlandığı ve geri okunup doğrulandığı zaman
+// "tamamlandı" sayılır. Geri yükleme yukarıdaki içe aktarma önizlemesi ve onayıyla (applyImport) yapılır.
+const cloudOn=()=>!!(window.Android&&typeof window.Android.cloudStatus==='function');
+const cloudPending=new Map();
+let cloudState=null,cloudBackups=[],cloudRestore=null;
+function cloudMsg(msg,kind){fileStatus('cloudStatus',msg,kind);}
+function cloudRefreshState(){
+  if(!cloudOn()){cloudState=null;return;}
+  try{cloudState=JSON.parse(window.Android.cloudStatus());}catch(e){cloudState=null;}
+}
+function cloudCall(op,opts,start){
+  const id=op+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,10);
+  cloudPending.set(id,Object.assign({op},opts));
+  try{start(id);}catch(e){cloudPending.delete(id);cloudMsg('⚠️ Bulut işlemi başlatılamadı.','error');}
+  cloudRender();
+}
+function cloudRender(){
+  const s=cloudState||{},ready=cloudOn()&&s.configured,signed=ready&&s.signedIn,busy=cloudPending.size>0;
+  const show=(id,on)=>{document.getElementById(id).hidden=!on;};
+  const acct=document.getElementById('cloudAccount');
+  if(!ready)acct.textContent=cloudOn()?'Bu derlemede bulut yedekleme yapılandırılmamış. Notlarınızı “JSON İndir” ile dosyaya yedekleyebilirsiniz.':'Bulut yedekleme yalnız Android uygulamasında kullanılabilir.';
+  else if(!signed)acct.textContent='Oturum kapalı. Notlarınız yalnız bu telefonda duruyor.';
+  else{
+    const last=Math.max(s.lastBackupAt||0,...cloudBackups.map(b=>b.createdAt||0));
+    acct.textContent=`Oturum açık: ${s.email||'Google hesabı'}${s.emulator?' (test emülatörü)':''}`+(last?` · Son yedek: ${CloudBackup.when(last)}`:'');
+  }
+  show('cloudSignIn',ready&&!signed);show('cloudBackupNow',signed);show('cloudRefresh',signed);show('cloudSignOut',signed);show('cloudAutoRow',signed);
+  document.getElementById('cloudAuto').checked=!!s.auto;
+  ['cloudSignIn','cloudBackupNow','cloudRefresh','cloudSignOut'].forEach(id=>{document.getElementById(id).disabled=busy;});
+  const ul=document.getElementById('cloudList');ul.innerHTML='';
+  if(signed)cloudBackups.forEach(b=>{
+    const li=document.createElement('li'),t=document.createElement('span'),btn=document.createElement('button');
+    t.textContent=CloudBackup.describe(b);
+    btn.type='button';btn.className='bk-btn secondary';btn.textContent='İncele ve geri yükle';btn.disabled=busy;
+    btn.setAttribute('aria-label',`${CloudBackup.describe(b)} yedeğini incele ve geri yükle`);
+    btn.onclick=()=>cloudFetch(b.id);
+    li.append(t,btn);ul.append(li);
+  });
+}
+function cloudList(manual){cloudCall('list',{manual:!!manual},id=>window.Android.cloudListBackups(id));}
+function cloudFetch(backupId){
+  cloudMsg('Yedek indiriliyor ve doğrulanıyor… Notlarınız onayınız olmadan değişmez.');
+  cloudCall('fetch',{},id=>window.Android.cloudFetchBackup(backupId,id));
+}
+// Stored text, as for the JSON file: exactly what is on the phone, never a half-edited copy.
+function cloudBackupStart(auto){cloudCall('backup',{auto},id=>window.Android.cloudBackup(localStorage.getItem(NKEY)||'{}',auto,id));}
+window.cloudAutoBackup=function(){
+  if(!cloudOn()||RF_MODE||cloudPending.size)return;
+  cloudRefreshState();
+  const s=cloudState;
+  if(s&&s.configured&&s.signedIn&&s.auto)cloudBackupStart(true);
+};
+document.getElementById('cloudSignIn').onclick=()=>{cloudMsg('Google hesabı seçimi açılıyor…');cloudCall('signIn',{},id=>window.Android.cloudSignIn(id));};
+document.getElementById('cloudSignOut').onclick=()=>{
+  if(!confirm('Bulut oturumu kapatılsın mı? Telefondaki notlarınız silinmez; buluttaki yedekler hesabınızda kalır.'))return;
+  cloudCall('signOut',{},id=>window.Android.cloudSignOut(id));
+};
+document.getElementById('cloudBackupNow').onclick=()=>{cloudMsg('Yedekleniyor… Sunucu tamamlandığını doğrulayana kadar yedek hazır sayılmaz.');cloudBackupStart(false);};
+document.getElementById('cloudRefresh').onclick=()=>{cloudMsg('Yedek listesi alınıyor…');cloudList(true);};
+document.getElementById('cloudAuto').onchange=e=>{
+  try{cloudState=JSON.parse(window.Android.cloudSetAuto(e.target.checked===true));}catch(err){}
+  cloudMsg(cloudState&&cloudState.auto?'Otomatik yedekleme açık: notlar değiştiyse uygulamadan çıkarken, en çok günde bir yedek alınır.':'Otomatik yedekleme kapalı.');
+  cloudRender();
+};
+window.onCloudResult=function(op,requestId,result,error){
+  const req=cloudPending.get(requestId);
+  if(!req){console.info('[Cloud] result for unknown request');return;}
+  cloudPending.delete(requestId);
+  cloudRefreshState();
+  if(op==='signIn'){
+    if(error)cloudMsg('⚠️ '+error,'error');
+    else{cloudMsg('✅ Oturum açıldı.','ok');cloudList(false);}
+  }else if(op==='signOut'){
+    cloudBackups=[];
+    cloudMsg(error?'⚠️ '+error:'Oturum kapatıldı. Notlarınız bu telefonda duruyor.',error?'error':'');
+  }else if(op==='backup'){
+    if(error){
+      cloudMsg('⚠️ '+(req.auto?'Otomatik yedek alınamadı: ':'Yedek alınamadı: ')+error,'error');
+      if(!req.auto)toast('⚠️ Bulut yedeği alınamadı');
+    }else if(result.skipped){
+      if(!req.auto||result.skipped==='FEWER_NOTES')cloudMsg(CloudBackup.skipText(result.skipped),result.skipped==='FEWER_NOTES'?'error':'');
+    }else{
+      const m='✅ Yedek tamamlandı ve doğrulandı: '+CloudBackup.describe(result.backup)+'.'+(result.pruneFailed?' Eski bir yedek silinemedi; sonraki yedeklemede yeniden denenecek.':'');
+      cloudMsg(m,'ok');
+      if(!req.auto)toast('✅ Bulut yedeği tamamlandı');
+      cloudList(false);
+    }
+  }else if(op==='list'){
+    if(error)cloudMsg('⚠️ '+error,'error');
+    else{
+      cloudBackups=result.backups||[];
+      if(req.manual)cloudMsg(cloudBackups.length?`${cloudBackups.length} tamamlanmış yedek bulundu.`:'Bu hesapta henüz tamamlanmış yedek yok.');
+    }
+  }else if(op==='fetch'){
+    if(error)cloudMsg('⚠️ '+error,'error');
+    else previewCloudRestore(result);
+  }
+  cloudRender();
+};
+// The same preview, confirmation and import as a JSON file; the backup only supplies the notes.
+function previewCloudRestore(r){
+  settleDelete();
+  const p=NotesFile.parse(r.text);
+  if(!p.ok){cloudMsg('⚠️ Yedek okunamadı: '+p.error+' Notlarınız değişmedi.','error');return;}
+  cloudRestore={data:p.data,localDeleted:r.localDeleted||[],meta:r.backup,deleted:r.deleted||0};
+  impStatusId='cloudStatus';
+  document.getElementById('impDeleted').checked=false;
+  renderCloudRestore();
+  cloudMsg('');
+  impOpener=document.activeElement;
+  document.getElementById('impOv').classList.add('open');
+  document.getElementById('impTitle').focus();
+}
+function renderCloudRestore(){
+  const c=cloudRestore;if(!c)return;
+  const plan=CloudBackup.restorePlan(DB,c.data,c.localDeleted,document.getElementById('impDeleted').checked);
+  const pv=NotesFile.preview(DB,plan.data);
+  pendingImport=pv.added?plan.data:null;
+  document.getElementById('impTitle').textContent=pv.added?'Bulut yedeği geri yüklensin mi?':'Bulut yedeği kontrol edildi';
+  document.getElementById('impText').textContent=`${CloudBackup.when(c.meta.createdAt)} tarihli yedek: ${c.meta.cityCount} şehirde ${c.meta.noteCount} not. Yedeğin bütünlüğü doğrulandı.`;
+  document.getElementById('impDetail').textContent=(pv.added
+    ?`${pv.added} yeni not eklenecek.${pv.skipped?` ${pv.skipped} not bu telefonda zaten olduğu için atlanacak; telefondaki hâli korunur.`:''} Mevcut ${NotesFile.count(DB)} notunuz silinmez ve değiştirilmez.`
+    :'Eklenecek yeni not yok; yedekteki notlar telefonda zaten var veya bu telefonda silinmiş. Notlarınız değişmedi.')
+    +(c.deleted?` Yedekteki ${c.deleted} silme kaydı bu telefondaki notları silmez.`:'');
+  document.getElementById('impDeletedRow').hidden=!plan.held;
+  document.getElementById('impDeletedText').textContent=`Bu telefonda silinmiş ${plan.held} not yedekte var. İşaretlerseniz bunlar da geri gelir; işaretlemezseniz silinmiş kalır.`;
+  document.getElementById('impConfirm').textContent='Geri yükle';
+  document.getElementById('impConfirm').hidden=!pv.added;
+  document.getElementById('impCancel').textContent=pv.added?'Vazgeç':'Tamam';
+}
+document.getElementById('impDeleted').onchange=renderCloudRestore;
+cloudRefreshState();cloudRender();
+if(cloudState&&cloudState.signedIn)cloudList(false);
+// Covers a backup missed because the app was closed or killed while it was due.
+setTimeout(()=>window.cloudAutoBackup(),20000);
 function emailNotes(){const cs=Object.keys(DB).filter(c=>DB[c]&&DB[c].length);if(!cs.length){toast('Gönderilecek not yok.');return;}let body='TÜRKİYE ŞEHİR NOTLARIM\n\n';cs.forEach(c=>{body+=`== ${c} ==\n`;DB[c].forEach(n=>{body+=`[${n.category}] ${n.title}\n${n.content||''}\n${n.date}\n\n`;});});window.location.href=`mailto:?subject=Türkiye Şehir Notlarım&body=${encodeURIComponent(body)}`;}
-function clearAll(){if(!confirm('Tüm notlar silinecek. Emin misiniz?'))return;const oldDB=DB;DB={};sv();Object.entries(oldDB).forEach(([city,notes])=>{if(Array.isArray(notes))notes.forEach(note=>mirrorDeletedNoteToRoom(city,note.id));});updateStyles();updateSum();toast('Tüm notlar yerel olarak silindi');}
-
-function cloudBackup() {
-    if(window.Android && window.Android.backupToCloud) {
-        window.Android.backupToCloud(JSON.stringify(DB));
-        toast('☁️ Buluta gönderiliyor...');
-    } else toast('Bu özellik Android uygulamada çalışır.');
-}
-
-function cloudRestore() {
-    if(window.Android && window.Android.restoreFromCloud) {
-        window.Android.restoreFromCloud();
-        toast('☁️ Buluttan getiriliyor...');
-    } else toast('Bu özellik Android uygulamada çalışır.');
-}
-
-function importFromCloud(json) {
-    try {
-        const d = JSON.parse(json);
-        const cnt = NoteIds.mergeNotes(DB, d, mirrorNewNoteToRoom);
-        sv(); updateStyles(); updateSum();
-        toast(`✅ Buluttan ${cnt} yeni not yüklendi`);
-    } catch { toast('❌ Hatalı bulut verisi'); }
-}
+function clearAll(){if(!confirm('Tüm notlar silinecek. Emin misiniz?'))return;settleDelete();const oldDB=DB;DB={};sv();Object.entries(oldDB).forEach(([city,notes])=>{if(Array.isArray(notes))notes.forEach(note=>mirrorDeletedNoteToRoom(city,note.id));});updateStyles();updateSum();toast('Tüm notlar yerel olarak silindi');}
 
 const offBar=document.getElementById('offlineBar');
 window.addEventListener('online',()=>offBar.classList.remove('show'));
@@ -1694,73 +2401,136 @@ document.getElementById('pwaBannerClose').onclick=()=>{banner.classList.remove('
 window.addEventListener('appinstalled',()=>{banner.classList.remove('show');toast('🎉 Uygulama kuruldu!');});
 if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').then(r=>console.info('SW:',r.scope)).catch(e=>console.info('SW (local):',e.message));}
 
-// GitHub Releases — native katman her açılışta kontrol eder ve indirir.
-let _updHide;
-function onGithubUpdate(ev){
-  if(!ev||!ev.type)return;
-  const banner=document.getElementById('updBanner');
-  const title=document.getElementById('updTitle');
-  const status=document.getElementById('updStatus');
-  const fill=document.getElementById('updFill');
-  const btn=document.getElementById('updAction');
-  if(!banner||!title||!status||!fill||!btn)return;
-  clearTimeout(_updHide);
-  if(ev.label) title.textContent='Yeni Güncelleme Mevcut ('+ev.label+')';
-  const show=()=>banner.classList.add('show');
-  if(ev.type==='available'){
-    status.textContent='İndiriliyor…';
-    fill.classList.remove('unk');
-    fill.style.width='0%';
-    btn.style.display='none';
-    show();
-    return;
+// GitHub güncellemeleri — durum native katmandadır; bu pencere yalnızca gösterir ve seçimi iletir.
+// APK yalnızca "Güncelle ve Yükle" ile indirilir; "Daha Sonra" indirme ve kurulum başlatmaz.
+const UPD_DIALOG=['UPDATE_AVAILABLE','DOWNLOADING','VERIFYING','READY_TO_INSTALL','INSTALL_PERMISSION_REQUIRED','FAILED'];
+const UPD_PENDING=['UPDATE_AVAILABLE','DISMISSED','DOWNLOADING','VERIFYING','READY_TO_INSTALL','INSTALL_PERMISSION_REQUIRED'];
+let updSnap=null,updNotesTag=null,updOpener=null,updDecile=-1,updStateShown=null;
+function updMB(b){return (b/1048576).toLocaleString('tr-TR',{maximumFractionDigits:1})+' MB';}
+function updIsOpen(){return document.getElementById('updOv').classList.contains('open');}
+function updClose(){
+  const ov=document.getElementById('updOv');
+  if(!ov.classList.contains('open'))return;
+  ov.classList.remove('open');
+  updStateShown=null;
+  if(updOpener&&document.body.contains(updOpener))updOpener.focus();
+  updOpener=null;
+}
+function updDrawer(s){
+  const pending=!!s.label&&UPD_PENDING.indexOf(s.state)>=0;
+  document.getElementById('updCheckTxt').textContent=pending?'Yeni sürüm: Neler Yeni?':'Güncellemeleri denetle';
+  const badge=document.getElementById('updBadge');
+  badge.hidden=!pending;badge.textContent=pending?s.label:'';
+}
+function onGithubUpdate(s){
+  if(!s||!s.state)return;
+  updSnap=s;
+  updDrawer(s);
+  if(!s.replay&&s.interactive){
+    if(s.state==='CHECKING')toast('Güncelleme denetleniyor…');
+    else if(s.state==='UP_TO_DATE')toast('Uygulamanız güncel.');
   }
-  if(ev.type==='progress'){
-    if(typeof ev.percent==='number' && ev.percent>=0){
-      fill.classList.remove('unk');
-      fill.style.width=Math.max(0,Math.min(100,ev.percent))+'%';
-      status.textContent='İndiriliyor… %'+ev.percent;
-    }else{
-      fill.classList.add('unk');
-      status.textContent='İndiriliyor…';
-    }
-    btn.style.display='none';
-    show();
-    return;
+  // Automatic checks fail silently: no network must never block the app.
+  if(UPD_DIALOG.indexOf(s.state)<0||(s.state==='FAILED'&&!s.interactive)){updClose();return;}
+  const ov=document.getElementById('updOv');
+  const label=s.label||'';
+  let ver=label?'Yeni sürüm: Şehir Notları '+label:'';
+  if(ver&&s.title&&s.title.indexOf(label)<0)ver+=' · '+s.title;
+  if(ver&&s.prerelease)ver+=' · Test sürümü';
+  if(ver&&s.size>0)ver+=' · '+updMB(s.size);
+  document.getElementById('updVersion').textContent=ver;
+  // A failed check has no release: no notes, and the title says what happened instead.
+  const notes=document.getElementById('updNotes');
+  notes.hidden=!s.tag;
+  document.getElementById('updTitle').textContent=s.tag?'Neler Yeni?':'Güncelleme denetlenemedi';
+  if(s.tag&&updNotesTag!==s.tag){
+    updNotesTag=s.tag;
+    ReleaseNotes.render(document,notes,s.notes||'');
+    notes.scrollTop=0;
   }
-  if(ev.type==='needs_permission'){
-    fill.classList.remove('unk');
-    fill.style.width='100%';
-    status.textContent='Kurulum için izin gerekli';
-    btn.textContent='İzin Ver';
-    btn.style.display='inline-block';
-    show();
-    return;
+  const bar=document.getElementById('updBar'),fill=document.getElementById('updFill'),status=document.getElementById('updStatus');
+  const primary=document.getElementById('updPrimary'),later=document.getElementById('updLater');
+  let msg='',prim='',sec='Daha Sonra',showBar=false;
+  switch(s.state){
+    case 'UPDATE_AVAILABLE':
+      if(s.installable===false){msg=s.blockReason||'Bu sürüm uygulama içinden kurulamıyor.';sec='Kapat';}
+      else{prim='Güncelle ve Yükle';msg='Güncelleme yalnızca onay verdiğinizde indirilir. Notlarınız korunur.'+(s.prerelease?' Bu bir test sürümüdür; hata içerebilir.':'');}
+      break;
+    case 'DOWNLOADING':
+      showBar=true;sec='İptal';
+      msg=(s.interactive?'':'Otomatik indirme açık. ')+((s.percent>=0)?'İndiriliyor… %'+s.percent+(s.total>0?' ('+updMB(s.downloaded)+' / '+updMB(s.total)+')':''):'İndiriliyor…');
+      break;
+    case 'VERIFYING':
+      showBar=true;sec='İptal';msg='Dosya doğrulanıyor: boyut, SHA-256 özeti, paket adı ve imza…';break;
+    case 'READY_TO_INSTALL':
+      prim='Yükle';msg='Dosya doğrulandı. Yükle\'ye dokunduğunuzda Android kurulumu onaylamanızı ister. Notlarınız, yedekleme ayarlarınız ve oturumunuz korunur.';break;
+    case 'INSTALL_PERMISSION_REQUIRED':
+      prim='İzin Ver';msg='Android ayarlarında bu uygulama için "Bu kaynaktan izin ver" seçeneğini açın. Ayardan dönünce kurulum devam eder.';break;
+    case 'FAILED':
+      msg=s.message||'Güncelleme tamamlanamadı.';sec='Kapat';
+      if(s.retryable)prim='Tekrar Dene';
+      break;
   }
-  if(ev.type==='ready'||ev.type==='install_started'){
-    fill.classList.remove('unk');
-    fill.style.width='100%';
-    status.textContent='Kurulum ekranı açılıyor…';
-    btn.textContent='Kur';
-    btn.style.display='inline-block';
-    show();
-    return;
-  }
-  if(ev.type==='failed'){
-    status.textContent=ev.message||'Güncelleme tamamlanamadı';
-    if(ev.canInstall){
-      btn.textContent='Kur';
-      btn.style.display='inline-block';
-    }else{
-      btn.style.display='none';
-      _updHide=setTimeout(()=>banner.classList.remove('show'),5000);
-    }
-    show();
+  bar.hidden=!showBar;
+  const known=s.state==='DOWNLOADING'&&s.percent>=0;
+  fill.classList.toggle('unk',showBar&&!known);
+  fill.style.width=known?Math.min(100,s.percent)+'%':'';
+  if(known){bar.setAttribute('aria-valuenow',String(s.percent));bar.setAttribute('aria-valuetext','%'+s.percent);}
+  else{bar.removeAttribute('aria-valuenow');bar.setAttribute('aria-valuetext',s.state==='VERIFYING'?'Doğrulanıyor':'İndiriliyor');}
+  // The status line is a live region: during a download refresh it every 10% so screen readers are not flooded.
+  const decile=known?Math.floor(s.percent/10):-1;
+  if(updStateShown!==s.state||decile!==updDecile){status.textContent=msg;updDecile=decile;}
+  status.classList.toggle('err',s.state==='FAILED');
+  primary.hidden=!prim;primary.textContent=prim;primary.disabled=false;
+  later.textContent=sec;later.disabled=false;
+  updStateShown=s.state;
+  if(!ov.classList.contains('open')){
+    updOpener=document.activeElement;
+    ov.classList.add('open');
+    document.getElementById('updTitle').focus();
   }
 }
-document.getElementById('updAction').onclick=function(){
-  if(window.Android&&window.Android.installUpdate) window.Android.installUpdate();
+function updLaterAction(){
+  if(window.Android&&window.Android.dismissUpdate)window.Android.dismissUpdate();
+  else updClose();
+}
+document.getElementById('updLater').onclick=updLaterAction;
+document.getElementById('updPrimary').onclick=function(){
+  if(!updSnap||!window.Android)return;
+  const btn=this;
+  btn.disabled=true;
+  // The installer may open and return without a state change, so re-enable after a moment.
+  setTimeout(()=>{btn.disabled=false;},1500);
+  const st=updSnap.state;
+  if(st==='UPDATE_AVAILABLE')window.Android.downloadUpdate();
+  else if(st==='READY_TO_INSTALL'||st==='INSTALL_PERMISSION_REQUIRED')window.Android.installUpdate();
+  else if(st==='FAILED')window.Android.retryUpdate();
 };
+document.getElementById('updCheck').onclick=function(){
+  if(window.Android&&window.Android.checkForUpdate)window.Android.checkForUpdate();
+  else toast('Güncelleme denetimi yalnızca uygulamada çalışır.');
+};
+// Two switches, stored natively; both start off. Hidden outside the Android app.
+(function(){
+  if(!(window.Android&&typeof window.Android.updaterSettings==='function'))return;
+  let st={};
+  try{st=JSON.parse(window.Android.updaterSettings())||{};}catch(e){return;}
+  const auto=document.getElementById('updAuto'),pre=document.getElementById('updPre');
+  auto.checked=st.autoDownload===true;pre.checked=st.prereleases===true;
+  if(typeof st.version==='string'&&st.version){
+    document.getElementById('updVerTxt').textContent='Yüklü sürüm: '+st.version;
+    document.getElementById('aboutVerTxt').textContent='Sürüm '+st.version+' · Notlar bu telefonda saklanır';
+  }
+  document.getElementById('updAutoRow').hidden=false;document.getElementById('updPreRow').hidden=false;
+  auto.onchange=function(){
+    window.Android.setAutoDownloadUpdates(this.checked);
+    toast(this.checked?'Yeni sürümler Wi-Fi\'de otomatik indirilecek; kurulum onayınızı bekler.':'Otomatik indirme kapatıldı.');
+  };
+  pre.onchange=function(){
+    window.Android.setPrereleaseUpdates(this.checked);
+    toast(this.checked?'Test sürümleri de gösterilecek.':'Yalnız kararlı sürümler gösterilecek.');
+  };
+})();
 
 updateSum();
 </script>

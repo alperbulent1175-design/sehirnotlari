@@ -29,6 +29,11 @@ data class NoteWriteJournalEntry(
     companion object {
         const val UPSERT = "UPSERT"
         const val DELETE = "DELETE"
+        /**
+         * One note of a JSON restore the user confirmed, recorded before the page stores it. The only
+         * entry that may revive a Room deletion record, and only while it matches localStorage.
+         */
+        const val RESTORE = "RESTORE"
 
         const val PENDING = "PENDING"
         const val FAILED = "FAILED"

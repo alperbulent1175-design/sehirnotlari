@@ -1,4 +1,4 @@
-package com.sehirnotlari
+package com.sehirnotlari.update
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -43,6 +43,17 @@ class ReleaseVersionsTest {
     }
 
     @Test
+    fun sameVersionMatchesTagAndApkVersionName() {
+        assertTrue(ReleaseVersions.sameVersion("v1.4", "1.4"))
+        assertTrue(ReleaseVersions.sameVersion("v1.4", "1.4.0"))
+        assertTrue(ReleaseVersions.sameVersion("v1.4+5", "1.4"))
+        assertFalse(ReleaseVersions.sameVersion("v1.4", "1.3"))
+        assertFalse(ReleaseVersions.sameVersion("v1.4", "1.5"))
+        assertFalse(ReleaseVersions.sameVersion("v1.4", ""))
+        assertFalse(ReleaseVersions.sameVersion("latest", "1.4"))
+    }
+
+    @Test
     fun displayVersionDropsBuildSuffix() {
         assertEquals("v1.1", ReleaseVersions.displayVersion("v1.1"))
         assertEquals("v1.1", ReleaseVersions.displayVersion("1.1"))
@@ -77,25 +88,28 @@ class ReleaseVersionsTest {
     }
 
     @Test
-    fun v13ReleaseUpdatesV12AndIsNotOfferedAgain() {
+    fun publishedV13ReleaseParsesAndIsOfferedOnlyToOlderVersions() {
         assertEquals(
-            "https://api.github.com/repos/alperbulent1175-design/sehirnotlari/releases/latest",
-            GithubReleaseUpdater.LATEST_RELEASE_URL
+            "https://api.github.com/repos/alperbulent1175-design/sehirnotlari/releases?per_page=10",
+            UpdateSource.GITHUB.releasesUrl
         )
         val body = """
-            {"tag_name":"v1.3","name":"v1.3","prerelease":false,"assets":[
-              {"name":"sehirnotlari-1.3.apk","content_type":"application/vnd.android.package-archive","size":11529036,
-               "browser_download_url":"https://github.com/alperbulent1175-design/sehirnotlari/releases/download/v1.3/sehirnotlari-1.3.apk"}]}
+            {"tag_name":"v1.3","name":"Şehir Notları v1.3","draft":false,"prerelease":false,"body":"## Şehir Notları v1.3","assets":[
+              {"name":"sehirnotlari-1.3.apk","state":"uploaded","content_type":"application/vnd.android.package-archive","size":11529036,
+               "digest":"sha256:362ec83a5683d8ced8f2eb52d7c35620f0c12663c65f9475e2c15cfd3bf7308f",
+               "browser_download_url":"https://github.com/alperbulent1175-design/sehirnotlari/releases/download/v1.3/sehirnotlari-1.3.apk"},
+              {"name":"sehirnotlari-1.3.apk.sha256","state":"uploaded","content_type":"text/plain","size":86,
+               "digest":"sha256:3d63a07c19fef91fa7ae28b7349ebfa18c5bd2e17a649095bd9853288ec9f67e",
+               "browser_download_url":"https://github.com/alperbulent1175-design/sehirnotlari/releases/download/v1.3/sehirnotlari-1.3.apk.sha256"}]}
         """.trimIndent()
-        val release = GithubReleaseUpdater.parseRelease(body)
+        val release = ReleaseParser.parse(body)
         assertEquals("v1.3", release.tag)
-        assertEquals(
-            "https://github.com/alperbulent1175-design/sehirnotlari/releases/download/v1.3/sehirnotlari-1.3.apk",
-            release.apkUrl
-        )
-        assertEquals(11529036L, release.apkSize)
+        assertEquals("sehirnotlari-1.3.apk", release.apk?.name)
+        assertEquals(11529036L, release.apk?.size)
+        assertEquals("362ec83a5683d8ced8f2eb52d7c35620f0c12663c65f9475e2c15cfd3bf7308f", release.apk?.sha256)
+        assertNull(release.blockReason)
         assertTrue(ReleaseVersions.isNewer(release.tag, "1.2", 3))
         assertFalse(ReleaseVersions.isNewer(release.tag, "1.3", 4))
-        assertFalse(ReleaseVersions.isNewer("v1.2", "1.3", 4))
+        assertFalse(ReleaseVersions.isNewer(release.tag, "1.4", 5))
     }
 }

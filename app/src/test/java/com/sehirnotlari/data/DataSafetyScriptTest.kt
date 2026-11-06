@@ -293,6 +293,43 @@ class DataSafetyScriptTest {
     }
 
     @Test
+    fun jsonRestoreOfADeletedNoteIsNamedInTheHistory() {
+        js(
+            """
+            var h = DataSafety.historyView({ backups: [
+              { id: 9, key: 'Bursa::101', city: 'Bursa', action: 'SYNC_FROM_LOCAL', kind: 'TOMBSTONE_CONFLICT', createdAt: 1, undoneAt: null, hadRow: true, undoable: true, title: 'Ulu Cami' }
+            ] }, DB);
+            """
+        )
+        assertEquals("JSON yedeğinden geri yüklendi; Room’daki silme kaydı kaldırıldı", str("h[0].label"))
+        assertTrue(bool("h[0].undoable"))
+    }
+
+    /** A restore cut off by a crash, proven by its record: offered as a proven repair, never as a review. */
+    @Test
+    fun anUnfinishedJsonRestoreIsOfferedAsAProvenRepair() {
+        js(
+            """
+            var m = DataSafety.model({ summary: summary({}), items: [
+              { key: 'Bursa::101', kind: 'TOMBSTONE_CONFLICT', action: 'REPAIRABLE', fields: [] },
+              { key: 'Bursa::102', kind: 'TOMBSTONE_CONFLICT', action: 'REPORTED', fields: [] },
+              { key: 'Bursa::103', kind: 'TOMBSTONE_CONFLICT', action: 'REPAIRED', fields: [] }
+            ] }, null, DB, 'ready');
+            """
+        )
+        assertEquals(2, num("m.items.length"))
+        assertEquals(1, num("m.counts.repairable"))
+        assertEquals(1, num("m.counts.review"))
+        assertEquals("repairable", str("m.items[0].group"))
+        assertFalse(bool("m.items[0].reviewable"))
+        assertTrue(str("m.items[0].text").contains("JSON yedeğinden geri yüklediniz"))
+        assertTrue(str("m.items[0].text").contains("Kanıtlı onarımları uygula"))
+        // Without a matching record the deletion record stays and the note is only reported.
+        assertTrue(str("m.items[1].text").contains("bu not için böyle bir kayıt yok"))
+        assertTrue(bool("m.items[1].reviewable"))
+    }
+
+    @Test
     fun keysMatchTheNativeRoomKeys() {
         assertEquals(RoomNoteKeys.key("Bursa", "1762380000000123"), str("DataSafety.noteKey('Bursa', 1762380000000123)"))
         assertEquals(RoomNoteKeys.key("Ankara", "import-a"), str("DataSafety.noteKey('Ankara', 'import-a')"))

@@ -145,6 +145,7 @@ interface NoteResolutionStore {
     suspend fun recentBackups(limit: Int): List<NoteResolutionBackup>
     suspend fun markUndone(id: Long, time: Long): Int
     suspend fun restoreRow(note: NoteEntity)
+    suspend fun resolvePendingJournal(ticket: Long, state: String, time: Long)
 }
 
 class RoomNoteResolutionStore(private val db: CityNotesDatabase) : NoteResolutionStore {
@@ -156,6 +157,8 @@ class RoomNoteResolutionStore(private val db: CityNotesDatabase) : NoteResolutio
     override suspend fun recentBackups(limit: Int) = db.resolutions().recent(limit)
     override suspend fun markUndone(id: Long, time: Long) = db.resolutions().markUndone(id, time)
     override suspend fun restoreRow(note: NoteEntity) = db.notes().upsert(note)
+    override suspend fun resolvePendingJournal(ticket: Long, state: String, time: Long) =
+        db.journal().resolvePending(ticket, state, time)
 }
 
 /**

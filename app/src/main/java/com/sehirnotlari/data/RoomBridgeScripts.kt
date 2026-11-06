@@ -24,6 +24,8 @@ object RoomBridgeScripts {
         return "window.onRoomReconcileResult && window.onRoomReconcileResult(${JSONObject.quote(requestId)},${report ?: "null"},$err);"
     }
 
+    fun restoreResult(requestId: String, result: JSONObject?, error: String?): String = callback("onRoomRestoreResult", requestId, result, error)
+
     fun notesError(error: String): String =
         "window.onRoomNotesError && window.onRoomNotesError(${JSONObject.quote(error)});"
 

@@ -105,7 +105,44 @@ class RoomMigrationGuardTest {
         assertFalse(Regex("""\bid\s*:\s*Date\.now\(\)""").containsMatchIn(html))
         assertFalse(html.contains("\${n.id})"))
         assertFalse(Regex("""\.id\s*[!=]==""").containsMatchIn(html))
-        assertTrue(Regex("""NoteIds\.mergeNotes\(""").findAll(html).count() >= 2)
+        // JSON import is the only merge path; a cloud restore fills the same preview and goes through it.
+        // New notes reach Room only once sv() has stored them; a failed save rolls the merge back.
+        val apply = html.substringAfter("function applyImport(d){").substringBefore("\n}")
+        assertTrue(apply.contains("NoteIds.mergeNotes(DB,d,(city,note)=>added.push([city,note]));"))
+        // The restore is recorded before sv(), cancelled when sv() fails and committed only after it succeeded.
+        val order = listOf("const restore=recordRoomRestore(added);", "try{sv();}", "cancelRoomRestore(restore);", "finishRoomRestore(restore);")
+            .map { apply.indexOf(it) }
+        assertTrue(order.toString(), order.all { it >= 0 } && order == order.sorted())
+        assertFalse(apply.contains("mirrorNewNoteToRoom"))
+        // Room is told about a restore with the stored text, never in Room-first mode.
+        val record = html.substringAfter("function recordRoomRestore(notes){").substringBefore("\n}")
+        assertTrue(record.contains("if(RF_MODE||!notes.length||"))
+        assertTrue(record.contains("window.Android.beginRoomRestore(JSON.stringify(notes),requestId)===true"))
+        val finish = html.substringAfter("function finishRoomRestore(r,retry){").substringBefore("\n}")
+        assertTrue(finish.indexOf("if(!r.recorded){roomRestoreFailed(") in 0 until finish.indexOf("window.Android.restoreRoomNotes("))
+        assertTrue(finish.contains("window.Android.restoreRoomNotes(localStorage.getItem('tur_v10')||'{}',r.requestId);"))
+        // A restore record that could not be written warns at once; the success message must not cover it.
+        val confirm = html.substringAfter("function confirmImport(){").substringBefore("\n}")
+        assertTrue(confirm.indexOf("if(r.ok&&roomRestoreRetry)return;") in 0 until confirm.indexOf("içe aktarıldı"))
+        assertTrue(apply.substringAfter("catch(e){").substringBefore("}").contains("DB=JSON.parse(before);"))
+        // Without a staged copy on Android nothing is stored; success waits for the Room answer.
+        val staged = apply.indexOf("if(restore&&!restore.recorded){DB=JSON.parse(before);")
+        assertTrue(staged in apply.indexOf("const restore=recordRoomRestore(added);") until apply.indexOf("try{sv();}"))
+        assertTrue(apply.substringAfter("if(restore&&!restore.recorded){").substringBefore("}").contains("return{ok:false,"))
+        assertTrue(confirm.indexOf("if(r.ok&&r.pending){") in confirm.indexOf("if(r.ok&&roomRestoreRetry)return;") until confirm.indexOf("✅"))
+        val result = html.substringAfter("window.onRoomRestoreResult=function(requestId,result,error){").substringBefore("\n};")
+        assertTrue(result.indexOf("not içe aktarıldı") > result.indexOf("if(error||!result){roomRestoreFailed("))
+        // The import and its startup resume (the same notes, from the staged copy) are the only merges.
+        assertEquals(2, Regex("""NoteIds\.mergeNotes\(DB,""").findAll(html).count())
+        val resume = html.substringAfter("function resumeImports(){").substringBefore("\n}")
+        assertTrue(resume.contains("if(RF_MODE||!(window.Android&&typeof window.Android.resumeRoomImports==='function'))return;"))
+        assertTrue(resume.contains("window.Android.resumeRoomImports(localStorage.getItem(NKEY)||'{}')"))
+        assertTrue(resume.contains("const added=NoteIds.mergeNotes(DB,incoming);"))
+        assertTrue(resume.substringAfter("try{sv();").substringAfter("catch(e){").substringBefore("}").contains("DB=JSON.parse(before);"))
+        // Before the deletion recovery and the load-time reconciliation, both of which must see the notes.
+        val call = html.indexOf("\nresumeImports();")
+        assertTrue(call > html.indexOf("noteDel=RF_MODE?null:NoteDelete.create({"))
+        assertTrue(call in 0 until html.indexOf("const r=noteDel.recover();"))
     }
 
     @Test
@@ -142,11 +179,11 @@ class RoomMigrationGuardTest {
         (Regex("""<button\b[^>]*>""").findAll(section) + Regex("""<button\b[^>]*>""").findAll(dialog)).forEach {
             assertTrue("button without type: ${it.value}", it.value.contains("type=\"button\""))
         }
-        assertTrue(html.contains(".ds-btn{min-height:44px"))
+        assertTrue(html.contains(".ds-btn{min-height:48px"))
         assertTrue(html.contains(".ds-check input{width:22px;height:22px"))
         assertTrue(Regex("""@media\(max-width:360px\)\{[^}]*\.ds-cells""").containsMatchIn(html))
         val back = html.substringAfter("function handleAndroidBack").substringBefore("\n}")
-        assertTrue(back.indexOf("dsOv") in 0 until back.indexOf("'drawer'"))
+        assertTrue(back.indexOf("dsOv") in 0 until back.indexOf("'editOv'"))
     }
 
     @Test
@@ -171,7 +208,9 @@ class RoomMigrationGuardTest {
         val html = sourceFile("src/main/assets/index.html").readText()
         assertTrue(html.contains("const RF_MODE=!!(RF_INFO&&RF_INFO.available===true&&RF_INFO.on===true);"))
         assertTrue(html.contains("let DB=RF_MODE?{}:(()=>{try{return JSON.parse(localStorage.getItem(NKEY))||{};}catch{return{};}})();"))
-        assertTrue(html.contains("const sv=()=>{if(RF_MODE){rfCommitFromDB();return;}localStorage.setItem(NKEY,JSON.stringify(DB));};"))
+        // storedDB() is DB plus a note inside its undo window, i.e. exactly what was stored before (note-delete.js).
+        assertTrue(html.contains("const storedDB=()=>noteDel?noteDel.view(DB):DB;"))
+        assertTrue(html.contains("const sv=()=>{if(RF_MODE){rfCommitFromDB();return;}localStorage.setItem(NKEY,JSON.stringify(storedDB()));};"))
         // Writes to the production key: sv() and the explicit, audited switch back from Room-first.
         assertEquals(2, Regex("""localStorage\.setItem\(NKEY""").findAll(html).count())
         val back = html.substringAfter("function rfSwitchClick").substringBefore("\n}")

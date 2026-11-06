@@ -10,7 +10,7 @@ enum class ReconcileKind {
     MISSING_IN_ROOM,
     /** Both sides have the note with different field values. */
     CONTENT_MISMATCH,
-    /** In localStorage, deleted in Room. Never revived automatically. */
+    /** In localStorage, deleted in Room. Revived only through a matching RESTORE journal record. */
     TOMBSTONE_CONFLICT,
     /** Active in Room, absent from localStorage. */
     ONLY_IN_ROOM,
@@ -97,6 +97,7 @@ interface NoteReconcileStore {
     suspend fun journal(): List<NoteWriteJournalEntry>
     suspend fun resolveJournal(ticket: Long, state: String, time: Long, previousJson: String?)
     suspend fun pruneJournal(before: Long): Int
+    suspend fun insertBackup(backup: NoteResolutionBackup): Long
 }
 
 class RoomNoteReconcileStore(private val db: CityNotesDatabase) : NoteReconcileStore {
@@ -105,6 +106,7 @@ class RoomNoteReconcileStore(private val db: CityNotesDatabase) : NoteReconcileS
     override suspend fun resolveJournal(ticket: Long, state: String, time: Long, previousJson: String?) =
         db.journal().resolve(ticket, state, time, previousJson)
     override suspend fun pruneJournal(before: Long) = db.journal().pruneResolved(before)
+    override suspend fun insertBackup(backup: NoteResolutionBackup) = db.resolutions().insert(backup)
 }
 
 /**
@@ -112,7 +114,9 @@ class RoomNoteReconcileStore(private val db: CityNotesDatabase) : NoteReconcileS
  * where the write journal proves a write was cut off: an unapplied entry newer than the Room row
  * requested exactly what localStorage holds now, so the Room row is provably older. Repairs reuse
  * that entry's ticket, so any later write still wins, and keep the replaced row in the journal.
- * Everything else is reported. Tombstones are never revived; rows are never deleted.
+ * Everything else is reported. Rows are never deleted. A tombstone is revived only to finish a JSON
+ * restore the user confirmed: its RESTORE record must match the stored note and be the note's last
+ * journaled write; the deletion record is kept as an undoable resolution backup.
  */
 class RoomNoteReconciler(
     private val sequencer: RoomNoteWriteSequencer,
@@ -156,14 +160,20 @@ class RoomNoteReconciler(
             val local = legacy.notes[key]
             val row = rows[key]
             val entries = journal[key].orEmpty()
-            val (stale, live) = entries.filter { it.unresolved }
+            val (stale, pending) = entries.filter { it.unresolved }
                 .partition { row != null && it.ticket <= row.writeTicket }
-            resolve(stale, NoteWriteJournalEntry.SUPERSEDED)
-            superseded += stale.size
+            // A restored note missing from localStorage was never stored there (the page failed or was
+            // killed first) or was deleted since: its record has nothing left to restore.
+            val unsaved = if (local == null) pending.filter { it.op == NoteWriteJournalEntry.RESTORE } else emptyList()
+            resolve(stale + unsaved, NoteWriteJournalEntry.SUPERSEDED)
+            superseded += stale.size + unsaved.size
+            val live = pending - unsaved.toSet()
             val city = local?.city ?: row?.city ?: live.firstOrNull()?.city ?: continue
             // The newest unapplied write that localStorage shows was made (localStorage may have lost later ones).
             val localWrite = local?.let { note ->
-                live.filter { it.op == NoteWriteJournalEntry.UPSERT && it.fingerprint == note.fingerprint }.maxByOrNull { it.ticket }
+                live.filter {
+                    (it.op == NoteWriteJournalEntry.UPSERT || it.op == NoteWriteJournalEntry.RESTORE) && it.fingerprint == note.fingerprint
+                }.maxByOrNull { it.ticket }
             }
             val deleteWrite = live.filter { it.op == NoteWriteJournalEntry.DELETE }.maxByOrNull { it.ticket }
 
@@ -195,8 +205,22 @@ class RoomNoteReconciler(
                         items += ReconcileItem(key, ReconcileKind.MISSING_IN_ROOM, ReconcileAction.REPORTED)
                     }
                 }
-                local != null && row!!.deletedAt != null ->
-                    items += ReconcileItem(key, ReconcileKind.TOMBSTONE_CONFLICT, ReconcileAction.REPORTED)
+                local != null && row!!.deletedAt != null -> {
+                    // Nothing journaled after the restore record: a later deletion or edit keeps the tombstone.
+                    val restore = localWrite?.takeIf { w ->
+                        provesRestore(w, local) && entries.none { it.ticket > w.ticket }
+                    }
+                    if (restore != null) {
+                        if (apply) restoreNote(sequencer, store::insertBackup, key, local, row, restore.ticket, restore.createdAt, now)
+                        val lost = settle(restore, row, repaired = true)
+                        items += ReconcileItem(key, ReconcileKind.TOMBSTONE_CONFLICT, fixed, lostWrites = lost)
+                    } else {
+                        val unproven = live.filter { it.op == NoteWriteJournalEntry.RESTORE }
+                        resolve(unproven, NoteWriteJournalEntry.SUPERSEDED)
+                        superseded += unproven.size
+                        items += ReconcileItem(key, ReconcileKind.TOMBSTONE_CONFLICT, ReconcileAction.REPORTED)
+                    }
+                }
                 local != null -> {
                     val active = row!!
                     val fields = local.draft.differingFields(active)

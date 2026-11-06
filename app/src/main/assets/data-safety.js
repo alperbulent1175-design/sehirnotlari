@@ -13,7 +13,7 @@
     },
     TOMBSTONE_CONFLICT: {
       label: 'Room’da silinmiş', group: 'review',
-      text: 'Bu not telefonda duruyor ama Room kopyasında silinmiş olarak işaretli. Silinmiş kayıtlar güvenlik nedeniyle geri getirilmez; telefondaki notunuz korunur.'
+      text: 'Bu not telefonda duruyor ama Room kopyasında silinmiş olarak işaretli. Silinmiş kayıtlar yalnız onayladığınız bir JSON geri yüklemesinin doğrulanmış kaydıyla geri getirilir; bu not için böyle bir kayıt yok. Telefondaki notunuz korunur.'
     },
     ONLY_IN_ROOM: {
       label: 'Yalnız Room’da', group: 'review',
@@ -33,6 +33,10 @@
     ['title', 'Başlık'], ['content', 'İçerik'], ['category', 'Kategori'], ['star', 'Yıldız'],
     ['color', 'Renk'], ['favorite', 'Favori'], ['isAI', 'Yapay zekâ notu'], ['date', 'Tarih']
   ];
+
+  // Only a JSON restore record that matches the phone copy makes a Room deletion record repairable.
+  var RESTORE_PENDING = 'Bu notu JSON yedeğinden geri yüklediniz ve telefona kaydedildi, ancak Room kopyası güncellenmeden işlem yarıda kaldı. ' +
+    'Geri yükleme kaydı telefondaki notla doğrulandı. “Kanıtlı onarımları uygula” Room’daki silme kaydını kaldırır; işlem geri alınabilir.';
 
   var KEEP_LOCAL = 'Telefondaki notunuz (ana kayıt) korunur ve değişmez.';
 
@@ -144,7 +148,7 @@
       action: item.action,
       label: info.label,
       group: group,
-      text: info.text,
+      text: item.kind === 'TOMBSTONE_CONFLICT' && item.action === 'REPAIRABLE' ? RESTORE_PENDING : info.text,
       fields: fields,
       city: cityOf(item.key),
       title: titleFor(db, item.key),
@@ -295,6 +299,8 @@
       var label;
       if (b.action === 'MARK_DELETED_IN_ROOM') label = 'Room’da silindi olarak işaretlendi';
       else if (b.kind === 'MISSING_IN_ROOM') label = 'Room’a eklendi';
+      // Only a confirmed JSON restore replaces a Room deletion record.
+      else if (b.kind === 'TOMBSTONE_CONFLICT') label = 'JSON yedeğinden geri yüklendi; Room’daki silme kaydı kaldırıldı';
       else if (b.kind === 'UNKNOWN_ORIGIN') label = 'Kökeni doğrulandı';
       else label = 'Room telefondaki notla güncellendi';
       out.push({

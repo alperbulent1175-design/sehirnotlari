@@ -6,9 +6,11 @@ junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 appcompat = "1.7.0"
 generativeai = "0.9.0"
-firebaseVertexai = "16.5.0"
-firebaseDatabase = "21.0.0"
-googleServices = "4.4.2"
+# Newer Firebase BoM 35 / googleid 1.2 need Kotlin 2.4 metadata; this project compiles with Kotlin 2.2.
+firebaseBom = "34.19.0"
+credentials = "1.6.0"
+googleId = "1.1.1"
+googleServices = "4.5.0"
 kotlinxCoroutinesAndroid = "1.7.3"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
@@ -33,8 +35,12 @@ androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-co
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 google-generativeai = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "generativeai" }
-firebase-vertexai = { group = "com.google.firebase", name = "firebase-vertexai", version.ref = "firebaseVertexai" }
-firebase-database = { group = "com.google.firebase", name = "firebase-database-ktx", version.ref = "firebaseDatabase" }
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
+firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore" }
+androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
+androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
+googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleId" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutinesAndroid" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }

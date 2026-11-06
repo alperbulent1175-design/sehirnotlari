@@ -12,6 +12,10 @@ class NoteWriteJournal(
     fun recordDelete(ticket: Long, city: String, noteId: String) =
         record(ticket, city, noteId, NoteWriteJournalEntry.DELETE, null)
 
+    /** Blocking; call on the bridge thread before the page writes `tur_v10` (see [RoomNoteRestorer]). */
+    fun recordRestore(ticket: Long, city: String, noteId: String, draft: RoomNoteDraft) =
+        record(ticket, city, noteId, NoteWriteJournalEntry.RESTORE, NoteFingerprint.of(draft))
+
     /** Leaves an entry alone if startup reconciliation already resolved it. */
     suspend fun resolve(ticket: Long, ack: RoomWriteAck) = dao.resolvePending(
         ticket,
@@ -24,6 +28,9 @@ class NoteWriteJournal(
     )
 
     suspend fun failed(ticket: Long) = dao.resolvePending(ticket, NoteWriteJournalEntry.FAILED, clock())
+
+    /** The page could not store the notes of a recorded restore; nothing is left to restore. */
+    suspend fun cancelled(ticket: Long) = dao.resolvePending(ticket, NoteWriteJournalEntry.SUPERSEDED, clock())
 
     private fun record(ticket: Long, city: String, noteId: String, op: String, fingerprint: String?) =
         dao.insert(

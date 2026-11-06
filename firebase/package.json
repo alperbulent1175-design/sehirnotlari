@@ -1,0 +1,15 @@
+{
+  "name": "sehirnotlari-firebase",
+  "private": true,
+  "description": "Firestore security rules for Şehir Notları cloud backups and their emulator tests. Nothing here deploys.",
+  "type": "module",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore --project demo-sehirnotlari \"node --test test/*.test.mjs\"",
+    "emulators": "firebase emulators:start --only auth,firestore"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "6.0.0",
+    "firebase": "13.2.0",
+    "firebase-tools": "15.35.0"
+  }
+}
