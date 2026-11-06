@@ -1182,6 +1182,39 @@ class MainActivity : AppCompatActivity() {
             startNotesExport(json, fileName)
         }
 
+        /** Shares a real JSON backup using a temporary, read-only FileProvider URI. */
+        @JavascriptInterface
+        fun shareNotesBackup(json: String, fileName: String) {
+            notesFileScope.launch {
+                try {
+                    val bytes = NotesFile.exportBytes(json)
+                    val safeName = NotesFile.suggestedName(fileName)
+                    val folder = File(cacheDir, "shared-backups").apply { mkdirs() }
+                    val file = File(folder, safeName)
+                    file.writeBytes(bytes)
+                    val uri = FileProvider.getUriForFile(this@MainActivity, "$packageName.fileprovider", file)
+                    runOnUiThread {
+                        try {
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = NotesFile.MIME
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                clipData = android.content.ClipData.newUri(contentResolver, safeName, uri)
+                            }
+                            startActivity(Intent.createChooser(send, "Yedeği Paylaş"))
+                        } catch (e: Exception) {
+                            Log.e(FILE_LOG, "share chooser failed error=${e.javaClass.simpleName}")
+                            webView.evaluateJavascript("toast('Paylaşım ekranı açılamadı.')", null)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(FILE_LOG, "share failed error=${e.javaClass.simpleName}")
+                    val message = (e as? NotesFile.Refused)?.message ?: "Yedek paylaşıma hazırlanamadı."
+                    runOnUiThread { webView.evaluateJavascript("toast(" + JSONObject.quote(message) + ")", null) }
+                }
+            }
+        }
+
         /** Opens the system file picker; the checked file text goes to `onNotesFileOpened`, nothing is merged here. */
         @JavascriptInterface
         fun pickNotesFile() {
