@@ -75,4 +75,27 @@ class ReleaseVersionsTest {
         )
         assertEquals("app-debug.apk", onlyDebug?.name)
     }
+
+    @Test
+    fun v13ReleaseUpdatesV12AndIsNotOfferedAgain() {
+        assertEquals(
+            "https://api.github.com/repos/alperbulent1175-design/sehirnotlari/releases/latest",
+            GithubReleaseUpdater.LATEST_RELEASE_URL
+        )
+        val body = """
+            {"tag_name":"v1.3","name":"v1.3","prerelease":false,"assets":[
+              {"name":"sehirnotlari-1.3.apk","content_type":"application/vnd.android.package-archive","size":11529036,
+               "browser_download_url":"https://github.com/alperbulent1175-design/sehirnotlari/releases/download/v1.3/sehirnotlari-1.3.apk"}]}
+        """.trimIndent()
+        val release = GithubReleaseUpdater.parseRelease(body)
+        assertEquals("v1.3", release.tag)
+        assertEquals(
+            "https://github.com/alperbulent1175-design/sehirnotlari/releases/download/v1.3/sehirnotlari-1.3.apk",
+            release.apkUrl
+        )
+        assertEquals(11529036L, release.apkSize)
+        assertTrue(ReleaseVersions.isNewer(release.tag, "1.2", 3))
+        assertFalse(ReleaseVersions.isNewer(release.tag, "1.3", 4))
+        assertFalse(ReleaseVersions.isNewer("v1.2", "1.3", 4))
+    }
 }
