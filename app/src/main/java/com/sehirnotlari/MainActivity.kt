@@ -59,6 +59,7 @@ import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Log
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebChromeClient
@@ -355,6 +356,19 @@ class MainActivity : AppCompatActivity() {
             setGeolocationEnabled(true)
         }
         webView.webViewClient = object : WebViewClient() {
+            // Only the bundled page may live in this WebView (it exposes the Android bridge); web links go to the browser.
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val uri = request?.url ?: return false
+                if (uri.scheme == "http" || uri.scheme == "https") {
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    } catch (_: ActivityNotFoundException) {
+                    }
+                    return true
+                }
+                return false
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 if (url != null && url.contains("index.html")) {
