@@ -1132,7 +1132,7 @@ class MainActivity : AppCompatActivity() {
                         try {
                             val inputContent = content {
                                 text("audio_1.m4a:")
-                                blob("audio/mpeg", file.readBytes())
+                                blob("audio/mp4", file.readBytes())
                                 text("Ekteki 'audio_1.m4a' ses kaydını metne dönüştür. BAŞLIK: ... İÇERİK: ... formatında ver.")
                             }
                             val response = generativeModel.generateContent(inputContent)
@@ -1172,7 +1172,7 @@ class MainActivity : AppCompatActivity() {
                             text("image_1.jpg:")
                             blob("image/jpeg", compressedPhotoBytes)
                             text("audio_1.m4a:")
-                            blob("audio/mpeg", audioBytes)
+                            blob("audio/mp4", audioBytes)
                             text("""
                                 Sen multimodal bir asistansın. Ekteki 'image_1.jpg' fotoğrafını incele ve 'audio_1.m4a' ses kaydındaki soruyu/isteği bu fotoğrafa göre yanıtla.
                                 Eğer sesli bir soru yoksa sadece fotoğrafı özetle. 
