@@ -149,6 +149,17 @@ class MainActivity : AppCompatActivity() {
         requestOptions = RequestOptions(timeout = kotlin.time.Duration.parse("5m"))
     )
 
+    // Android 13+ keeps notifications off until asked; without this the reminders fire silently.
+    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) webView.evaluateJavascript("toast('Bildirim izni verilmedi; hatırlatıcılar görünmeyecek')", null)
+    }
+
+    private fun askNotificationPermissionOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        runOnUiThread { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+    }
+
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -1271,6 +1282,7 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun scheduleReminder(city: String, message: String, timestamp: Long) {
+            askNotificationPermissionOnce()
             val intent = Intent(mContext, ReminderReceiver::class.java).apply {
                 putExtra("city", city)
                 putExtra("message", message)
