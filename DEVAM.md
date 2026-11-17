@@ -1,5 +1,20 @@
 # DEVAM
 
+## 2026-11-17 — AI özellikleri Firebase AI Logic'e taşındı (DERLENMEDİ, TEST EDİLMEDİ)
+
+- **Dal:** `feature/firebase-ai-logic` (`fix/pdf-error-diagnostics` üzerinde; `main` dokunulmadı, PR yok)
+- **Durum:** kod yazıldı; Android SDK olmayan bir ortamda, **derleme ve `testDebugUnitTest` çalıştırılmadı**. API imzaları `firebase-ai:17.17.0` (BoM 34.19.0) sınıflarından `javap` ile doğrulandı.
+- **Ne değişti:**
+  - Eski `generativeai:0.9.0` SDK'sı ve APK'ya gömülen `GEMINI_API_KEY` (`local.properties` → `BuildConfig`) kaldırıldı. Anahtar artık uygulamada yok.
+  - Yeni `cloud/GeminiAi.kt`: Gemini Developer API arka ucu (`GenerativeBackend.googleAI()`), model `gemini-2.5-flash`, 5 dk zaman aşımı. `com.google.firebase` yalnız `cloud` paketinde kalıyor (BridgeSecurityTest kuralı); uygulamanın geri kalanı `AiPart` / `AiAnswer` kullanıyor.
+  - `aiEnabled` artık `google-services.json` ile yapılandırılmış bir Firebase projesi olup olmadığına bakıyor; yoksa özellikler kapalı kalıyor.
+  - PDF, şehir rehberi, sesli not ve görsel not aynı yoldan gidiyor. `RoomMigrationGuardTest` içindeki AI kapısı testi yeni ifadeye göre güncellendi.
+- **Kullanıcının yapması gerekenler (kodla yapılamaz):**
+  1. Firebase Console → Build → **AI Logic** → Gemini Developer API'yi etkinleştir (Spark planında çalışır).
+  2. `app/google-services.json` dosyasının bu projeye ait olduğundan emin ol (gitignore'da, release derlemesinde bulunmalı).
+  3. Kötüye kullanımı sınırlamak için **App Check** (Play Integrity) açmayı ve kota/bütçe uyarısı koymayı düşün. Anahtar APK'da olmasa da herkese açık sürüm Firebase üzerinden kotanızı kullanır.
+- **Sonraki tek somut adım:** `./gradlew testDebugUnitTest assembleDebug` çalıştır; derleme hatası çıkarsa (özellikle `FirebaseAI.getInstance`, `generativeModel(..., requestOptions=...)`, `content { text(); inlineData() }`) düzelt; sonra gerçek telefonda PDF, rehber, ses ve görsel notu dene.
+
 ## 2026-11-06 — v1.4 ve v1.5-beta.1 yayınlandı
 
 - **Kaynak:** `c28461c` hem `feature/v14-updater-ux` hem `main` (fast-forward). `v1.4` etiketi bu commit'te.

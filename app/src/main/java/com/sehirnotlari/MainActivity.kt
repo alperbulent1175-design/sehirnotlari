@@ -70,12 +70,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
-import com.google.ai.client.generativeai.GenerativeModel
-import com.google.ai.client.generativeai.type.BlockThreshold
-import com.google.ai.client.generativeai.type.HarmCategory
-import com.google.ai.client.generativeai.type.SafetySetting
-import com.google.ai.client.generativeai.type.content
-import com.google.ai.client.generativeai.type.RequestOptions
+import com.sehirnotlari.cloud.AiPart
+import com.sehirnotlari.cloud.GeminiAi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -134,20 +130,10 @@ class MainActivity : AppCompatActivity() {
     private var photoFile: File? = null
     private var photoUri: Uri? = null
 
-    // Builds without GEMINI_API_KEY (public releases) must not call the API at all.
-    private val aiEnabled = BuildConfig.GEMINI_API_KEY.isNotBlank()
-
-    private val generativeModel = GenerativeModel(
-        modelName = "gemini-2.5-flash",
-        apiKey = BuildConfig.GEMINI_API_KEY.trim(),
-        requestOptions = RequestOptions(timeout = kotlin.time.Duration.parse("5m"))
-    )
-
-    private val guideModel = GenerativeModel(
-        modelName = "gemini-2.5-flash",
-        apiKey = BuildConfig.GEMINI_API_KEY.trim(),
-        requestOptions = RequestOptions(timeout = kotlin.time.Duration.parse("5m"))
-    )
+    // Gemini runs through Firebase AI Logic, so no API key is built into the app. Builds without the local
+    // google-services.json have no Firebase project: the AI features stay off there and nothing is called.
+    private val gemini by lazy { GeminiAi(applicationContext) }
+    private val aiEnabled by lazy { gemini.available }
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -258,7 +244,7 @@ class MainActivity : AppCompatActivity() {
     private fun extractTextFromPdf(uri: Uri) {
         Log.d("SehirNotlari", "PDF Analysis started")
         if (!aiEnabled) {
-            webView.evaluateJavascript("toast('PDF hatası: Gemini API anahtarı yok (local.properties → GEMINI_API_KEY)')", null)
+            webView.evaluateJavascript("toast('PDF hatası: Yapay zekâ bu sürümde yapılandırılmamış (Firebase projesi yok)')", null)
             return
         }
         webView.evaluateJavascript("showLoading('PDF işleniyor...')", null)
@@ -272,9 +258,7 @@ class MainActivity : AppCompatActivity() {
                 val cityName = selectedCityForPdf ?: ""
                 val promptCityPart = if (cityName.isNotEmpty()) "ve '$cityName' şehri ile ilgili" else "ve ilgili şehir(ler) ile ilgili"
 
-                val inputContent = content {
-                    blob("application/pdf", bytes)
-                    text("""
+                val prompt = """
                         Sen dünya çapında tecrübeye sahip profesyonel bir gezi rehberi ve gurmesin. 
                         Analiz et $promptCityPart vizyoner bir özet çıkar.
                         
@@ -286,15 +270,14 @@ class MainActivity : AppCompatActivity() {
                         Yanıtını YALNIZCA şu formatta ver, başka hiçbir şey yazma:
                         BAŞLIK: [Şehir Adı ve Kısa Motto]
                         İÇERİK: [Yukarıdaki maddeleri içeren şık ve öz metin]
-                    """.trimIndent())
-                }
+                    """.trimIndent()
 
-                val response = generativeModel.generateContent(inputContent)
+                val response = gemini.generate(AiPart.Data(bytes, "application/pdf"), AiPart.Text(prompt))
                 val aiResponse = response.text
                 if (aiResponse.isNullOrBlank()) {
                     // Empty answers (e.g. PDFs with blank pages on 2.5-flash) carry the reason here.
-                    val block = response.promptFeedback?.blockReason
-                    val finish = response.candidates.firstOrNull()?.finishReason
+                    val block = response.blockReason
+                    val finish = response.finishReason
                     Log.e("SehirNotlari", "PDF Analysis: empty AI text blockReason=$block finishReason=$finish")
                     throw Exception("AI boş yanıt verdi (blockReason=$block, finishReason=$finish). PDF'de boş sayfa varsa temizleyip tekrar dene.")
                 }
@@ -1110,7 +1093,7 @@ class MainActivity : AppCompatActivity() {
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val prompt = "Sen profesyonel bir seyahat rehberisin. '$city' şehri için 'Ne yenir?', 'Gezilecek yer' ve 1 cümlelik bilgi ver. HTML (<b>, <br>) kullan. Çok kısa olsun."
-                    val response = guideModel.generateContent(prompt)
+                    val response = gemini.generate(AiPart.Text(prompt))
                     val responseText = response.text
                     if (responseText.isNullOrBlank()) throw Exception("empty guide")
                     Log.d("SehirNotlari", "AI Guide Response length=${responseText.length}")
@@ -1164,12 +1147,11 @@ class MainActivity : AppCompatActivity() {
                 audioFile?.let { file ->
                     lifecycleScope.launch(Dispatchers.IO) {
                         try {
-                            val inputContent = content {
-                                text("audio_1.m4a:")
-                                blob("audio/mp4", file.readBytes())
-                                text("Ekteki 'audio_1.m4a' ses kaydını metne dönüştür. BAŞLIK: ... İÇERİK: ... formatında ver.")
-                            }
-                            val response = generativeModel.generateContent(inputContent)
+                            val response = gemini.generate(
+                                AiPart.Text("audio_1.m4a:"),
+                                AiPart.Data(file.readBytes(), "audio/mp4"),
+                                AiPart.Text("Ekteki 'audio_1.m4a' ses kaydını metne dönüştür. BAŞLIK: ... İÇERİK: ... formatında ver.")
+                            )
                             val aiResponse = response.text ?: ""
                             val title = if (aiResponse.contains("BAŞLIK:")) aiResponse.substringAfter("BAŞLIK:").substringBefore("İÇERİK:").trim() else "Sesli Not"
                             val summary = if (aiResponse.contains("İÇERİK:")) aiResponse.substringAfter("İÇERİK:").trim() else aiResponse
@@ -1205,19 +1187,17 @@ class MainActivity : AppCompatActivity() {
                         scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)
                         val compressedPhotoBytes = stream.toByteArray()
 
-                        val inputContent = content {
-                            text("image_1.jpg:")
-                            blob("image/jpeg", compressedPhotoBytes)
-                            text("audio_1.m4a:")
-                            blob("audio/mp4", audioBytes)
-                            text("""
+                        val response = gemini.generate(
+                            AiPart.Text("image_1.jpg:"),
+                            AiPart.Data(compressedPhotoBytes, "image/jpeg"),
+                            AiPart.Text("audio_1.m4a:"),
+                            AiPart.Data(audioBytes, "audio/mp4"),
+                            AiPart.Text("""
                                 Sen multimodal bir asistansın. Ekteki 'image_1.jpg' fotoğrafını incele ve 'audio_1.m4a' ses kaydındaki soruyu/isteği bu fotoğrafa göre yanıtla.
                                 Eğer sesli bir soru yoksa sadece fotoğrafı özetle. 
                                 Yanıtı BAŞLIK: ... ve İÇERİK: ... formatında ver.
                             """.trimIndent())
-                        }
-
-                        val response = generativeModel.generateContent(inputContent)
+                        )
                         val aiResponse = response.text ?: ""
                         val title = if (aiResponse.contains("BAŞLIK:")) aiResponse.substringAfter("BAŞLIK:").substringBefore("İÇERİK:").trim() else "Görsel Analiz"
                         val summary = if (aiResponse.contains("İÇERİK:")) aiResponse.substringAfter("İÇERİK:").trim() else aiResponse

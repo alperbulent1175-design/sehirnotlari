@@ -244,16 +244,19 @@ class RoomMigrationGuardTest {
     }
 
     @Test
-    fun aiFeaturesAreOffWithoutAKeyAndNeverShowRawErrors() {
+    fun aiFeaturesAreOffWithoutFirebaseAndNeverShowRawErrors() {
         val activity = sourceFile("src/main/java/com/sehirnotlari/MainActivity.kt").readText()
-        assertTrue(activity.contains("private val aiEnabled = BuildConfig.GEMINI_API_KEY.isNotBlank()"))
+        // Gemini goes through Firebase AI Logic: no API key is built into the app, and without the Firebase project the features stay off.
+        assertTrue(activity.contains("private val aiEnabled by lazy { gemini.available }"))
+        assertFalse(activity.contains("GEMINI_API_KEY"))
+        assertFalse(sourceFile("build.gradle.kts").readText().contains("GEMINI_API_KEY"))
         assertTrue(activity.contains("fun aiAvailable(): Boolean = aiEnabled"))
         listOf("fun startRecording()", "fun startMultiModalRecording()", "fun pickPDF(city: String)").forEach { name ->
             val body = activity.substringAfter(name).substringBefore("@JavascriptInterface")
             assertTrue("$name is not gated", Regex("""^\s*\{\s*if \(refuseWithoutAi\(\)\) return""").containsMatchIn(body))
         }
         val guide = activity.substringAfter("fun getCityGuide(city: String)").substringBefore("@JavascriptInterface")
-        assertTrue(guide.indexOf("if (!aiEnabled)") in 0 until guide.indexOf("generateContent"))
+        assertTrue(guide.indexOf("if (!aiEnabled)") in 0 until guide.indexOf("gemini.generate("))
         assertFalse(guide.contains("e.message"))
         val html = sourceFile("src/main/assets/index.html").readText()
         listOf("'pdfBtn').onclick", "'multiBtn').onclick", "'micBtn').onclick", "function pickPDF()").forEach { handler ->
