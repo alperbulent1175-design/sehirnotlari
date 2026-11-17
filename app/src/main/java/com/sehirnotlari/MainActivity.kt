@@ -1076,7 +1076,8 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val prompt = "Sen profesyonel bir seyahat rehberisin. '$city' şehri için 'Ne yenir?', 'Gezilecek yer' ve 1 cümlelik bilgi ver. HTML (<b>, <br>) kullan. Çok kısa olsun."
                     val response = guideModel.generateContent(prompt)
-                    val responseText = response.text ?: "Bilgi yok"
+                    val responseText = response.text
+                    if (responseText.isNullOrBlank()) throw Exception("empty guide")
                     Log.d("SehirNotlari", "AI Guide Response length=${responseText.length}")
                     
                     sharedPrefs.edit().putString(city, responseText).apply()
