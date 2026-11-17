@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Şehir Notları">
 <link rel="manifest" href="./manifest.json">
 <title>Türkiye Şehir Notları</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="leaflet/leaflet.css">
 <style>
 :root{
   --bg:#eef2f5;--surf:#fff;--surf2:#f5f7fa;--brd:#dde3ea;
@@ -825,7 +825,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
 <div class="undo-bar" id="undoBar" role="status" aria-live="polite" hidden><span id="undoText"></span><button type="button" id="undoBtn">Geri Al</button></div>
 <div class="rf-bar" id="rfBar" role="status" aria-live="polite" hidden></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="leaflet/leaflet.js"></script>
 <script src="note-ids.js"></script>
 <script src="note-delete.js"></script>
 <script src="city-pick.js"></script>
@@ -937,8 +937,8 @@ function buildPins(){
 function loadLeaflet(){
   if(window.L)return Promise.resolve();
   return new Promise((resolve,reject)=>{
-    const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css);
-    const s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    const css=document.createElement('link');css.rel='stylesheet';css.href='leaflet/leaflet.css';document.head.appendChild(css);
+    const s=document.createElement('script');s.src='leaflet/leaflet.js';
     s.onload=()=>window.L?resolve():reject(new Error('Leaflet missing'));s.onerror=()=>{s.remove();reject(new Error('Leaflet unavailable'));};
     document.head.appendChild(s);
   });
@@ -970,7 +970,9 @@ async function loadMap(){
 }
 async function loadProvinces(){
   let geo=null;
-  for(const url of['https://cdn.jsdelivr.net/gh/cihadturhan/tr-map@master/geo/tr-cities-utf8.json','https://raw.githubusercontent.com/cihadturhan/tr-map/master/geo/tr-cities-utf8.json']){
+  // The boundaries ship inside the app; the network copies below are only a fallback.
+  try{await new Promise((ok,no)=>{const t=document.createElement('script');t.src='leaflet/tr-cities.js';t.onload=ok;t.onerror=no;document.head.appendChild(t);});geo=window.TR_CITIES||null;}catch{}
+  if(!geo)for(const url of['https://cdn.jsdelivr.net/gh/cihadturhan/tr-map@master/geo/tr-cities-utf8.json','https://raw.githubusercontent.com/cihadturhan/tr-map/master/geo/tr-cities-utf8.json']){
     const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
     try{const r=await fetch(url,{signal:ctl.signal});if(r.ok){geo=await r.json();break;}}catch{}
     finally{clearTimeout(timer);}
