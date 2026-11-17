@@ -249,6 +249,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        runCatching { mediaRecorder?.release() }
+        mediaRecorder = null
         releaseUpdater.onDestroy()
         super.onDestroy()
     }
@@ -349,7 +351,27 @@ class MainActivity : AppCompatActivity() {
                 prepare()
                 start()
             }
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            Log.e("SehirNotlari", "Recording start failed error=${e.javaClass.simpleName}")
+            runCatching { mediaRecorder?.release() }
+            mediaRecorder = null
+            // Called from the JavaScript bridge thread too, so touch the WebView on the UI thread.
+            runOnUiThread {
+                webView.evaluateJavascript("hideLoading()", null)
+                webView.evaluateJavascript("toast('Ses kaydı başlatılamadı')", null)
+            }
+        }
+    }
+
+    // stop() throws on a recording that is too short; the recorder must still be released either way.
+    private fun stopRecorderSafely() {
+        val recorder = mediaRecorder ?: return
+        mediaRecorder = null
+        try {
+            recorder.stop()
+        } finally {
+            runCatching { recorder.release() }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -1134,9 +1156,7 @@ class MainActivity : AppCompatActivity() {
         fun stopRecording(city: String) {
             selectedCityForPdf = city
             try {
-                mediaRecorder?.stop()
-                mediaRecorder?.release()
-                mediaRecorder = null
+                stopRecorderSafely()
 
                 audioFile?.let { file ->
                     lifecycleScope.launch(Dispatchers.IO) {
@@ -1163,9 +1183,7 @@ class MainActivity : AppCompatActivity() {
         fun stopMultiModalRecording(city: String) {
             selectedCityForPdf = city
             try {
-                mediaRecorder?.stop()
-                mediaRecorder?.release()
-                mediaRecorder = null
+                stopRecorderSafely()
 
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
@@ -1174,7 +1192,12 @@ class MainActivity : AppCompatActivity() {
 
                         // Fotoğrafı küçült (Hız için)
                         val fullBitmap = BitmapFactory.decodeByteArray(photoBytes, 0, photoBytes.size)
-                        val scaledBitmap = Bitmap.createScaledBitmap(fullBitmap, 1024, 1024 * fullBitmap.height / fullBitmap.width, true)
+                            ?: throw Exception("Fotoğraf okunamadı")
+                        // Longest side 1024, aspect ratio kept (portrait photos used to be stretched).
+                        val ratio = 1024f / maxOf(fullBitmap.width, fullBitmap.height)
+                        val scaledBitmap = if (ratio >= 1f) fullBitmap else Bitmap.createScaledBitmap(
+                            fullBitmap, (fullBitmap.width * ratio).toInt().coerceAtLeast(1), (fullBitmap.height * ratio).toInt().coerceAtLeast(1), true
+                        )
                         val stream = ByteArrayOutputStream()
                         scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)
                         val compressedPhotoBytes = stream.toByteArray()
