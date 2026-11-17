@@ -262,8 +262,9 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val inputStream = contentResolver.openInputStream(uri) ?: throw Exception("Dosya açılamadı")
-                val bytes = inputStream.readBytes()
-                inputStream.close()
+                val bytes = inputStream.use { it.readBytes() }
+                // Inline requests are limited to ~20 MB in total; fail early with a clear message.
+                if (bytes.size > 15 * 1024 * 1024) throw Exception("PDF çok büyük (en çok 15 MB)")
 
                 val cityName = selectedCityForPdf ?: ""
                 val promptCityPart = if (cityName.isNotEmpty()) "ve '$cityName' şehri ile ilgili" else "ve ilgili şehir(ler) ile ilgili"
@@ -287,9 +288,12 @@ class MainActivity : AppCompatActivity() {
 
                 val response = generativeModel.generateContent(inputContent)
                 val aiResponse = response.text
-                if (aiResponse == null) {
-                    Log.e("SehirNotlari", "PDF Analysis: AI returned null text")
-                    throw Exception("AI yanıt vermedi")
+                if (aiResponse.isNullOrBlank()) {
+                    // Empty answers (e.g. PDFs with blank pages on 2.5-flash) carry the reason here.
+                    val block = response.promptFeedback?.blockReason
+                    val finish = response.candidates.firstOrNull()?.finishReason
+                    Log.e("SehirNotlari", "PDF Analysis: empty AI text blockReason=$block finishReason=$finish")
+                    throw Exception("AI boş yanıt verdi (blockReason=$block, finishReason=$finish). PDF'de boş sayfa varsa temizleyip tekrar dene.")
                 }
 
                 val title = if (aiResponse.contains("BAŞLIK:")) aiResponse.substringAfter("BAŞLIK:").substringBefore("İÇERİK:").trim() else "AI Özeti"
