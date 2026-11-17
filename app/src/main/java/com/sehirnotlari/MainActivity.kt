@@ -254,6 +254,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun extractTextFromPdf(uri: Uri) {
         Log.d("SehirNotlari", "PDF Analysis started")
+        if (!aiEnabled) {
+            webView.evaluateJavascript("toast('PDF hatası: Gemini API anahtarı yok (local.properties → GEMINI_API_KEY)')", null)
+            return
+        }
         webView.evaluateJavascript("showLoading('PDF işleniyor...')", null)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -295,9 +299,11 @@ class MainActivity : AppCompatActivity() {
                     webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(title)}, ${JSONObject.quote(summary)})", null)
                 }
             } catch (e: Exception) {
-                Log.e("SehirNotlari", "PDF Analysis failed error=${e.javaClass.simpleName}")
+                // Gemini SDK often wraps the real reason (401/429/serialization) in cause.
+                val root = generateSequence<Throwable>(e) { it.cause }.last()
+                Log.e("SehirNotlari", "PDF Analysis failed: ${e.javaClass.simpleName}: ${e.message} | root=${root.javaClass.simpleName}: ${root.message}", e)
                 withContext(Dispatchers.Main) {
-                    val errorMsg = e.message ?: e.toString()
+                    val errorMsg = if (root !== e) "${e.message} (${root.javaClass.simpleName}: ${root.message})" else (e.message ?: e.toString())
                     webView.evaluateJavascript("hideLoading()", null)
                     webView.evaluateJavascript("toast(${JSONObject.quote("PDF hatası: $errorMsg")})", null)
                 }
