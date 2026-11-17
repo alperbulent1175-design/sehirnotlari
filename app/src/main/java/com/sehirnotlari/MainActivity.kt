@@ -308,7 +308,10 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 // Gemini SDK often wraps the real reason (401/429/serialization) in cause.
                 val root = generateSequence<Throwable>(e) { it.cause }.last()
-                Log.e("SehirNotlari", "PDF Analysis failed: ${e.javaClass.simpleName}: ${e.message} | root=${root.javaClass.simpleName}: ${root.message}", e)
+                // Class names only: the project's log policy (RoomMigrationGuardTest) forbids messages and stack traces in logcat.
+                // The readable message reaches the user through the toast below.
+                val chain = generateSequence<Throwable>(e) { it.cause }.take(6).joinToString(" <- ") { it.javaClass.simpleName }
+                Log.e("SehirNotlari", "PDF Analysis failed chain=$chain")
                 withContext(Dispatchers.Main) {
                     val errorMsg = if (root !== e) "${e.message} (${root.javaClass.simpleName}: ${root.message})" else (e.message ?: e.toString())
                     webView.evaluateJavascript("hideLoading()", null)
