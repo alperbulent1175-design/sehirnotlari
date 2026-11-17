@@ -316,6 +316,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Voice and photo notes used to swallow failures, leaving the loading screen up. Log class names only.
+    private fun reportAiNoteFailure(what: String, e: Exception) {
+        val root = generateSequence<Throwable>(e) { it.cause }.last()
+        Log.e("SehirNotlari", "$what failed: ${e.javaClass.simpleName} root=${root.javaClass.simpleName}")
+        runOnUiThread {
+            webView.evaluateJavascript("hideLoading()", null)
+            webView.evaluateJavascript("toast(${JSONObject.quote("$what hatası: ${e.message ?: e.javaClass.simpleName}")})", null)
+        }
+    }
+
     private fun takePhotoForMultiModal() {
         val storageDir = externalCacheDir
         photoFile = File.createTempFile("temp_photo", ".jpg", storageDir)
@@ -1143,10 +1153,10 @@ class MainActivity : AppCompatActivity() {
                             withContext(Dispatchers.Main) {
                                 webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(title)}, ${JSONObject.quote(summary)})", null)
                             }
-                        } catch (e: Exception) { e.printStackTrace() }
+                        } catch (e: Exception) { reportAiNoteFailure("Sesli not", e) }
                     }
                 }
-            } catch (e: Exception) { e.printStackTrace() }
+            } catch (e: Exception) { reportAiNoteFailure("Sesli not", e) }
         }
 
         @JavascriptInterface
@@ -1189,9 +1199,9 @@ class MainActivity : AppCompatActivity() {
                         withContext(Dispatchers.Main) {
                             webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(title)}, ${JSONObject.quote(summary)})", null)
                         }
-                    } catch (e: Exception) { e.printStackTrace() }
+                    } catch (e: Exception) { reportAiNoteFailure("Görsel not", e) }
                 }
-            } catch (e: Exception) { e.printStackTrace() }
+            } catch (e: Exception) { reportAiNoteFailure("Görsel not", e) }
         }
 
         @JavascriptInterface
