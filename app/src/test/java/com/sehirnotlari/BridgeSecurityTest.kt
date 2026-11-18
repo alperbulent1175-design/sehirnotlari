@@ -19,9 +19,9 @@ class BridgeSecurityTest {
             listOf(
                 "aiAvailable", "applyRoomResolution", "beginRoomRestore", "cancelRoomRestore", "checkForUpdate",
                 "cloudBackup", "cloudFetchBackup", "cloudListBackups", "cloudSetAuto", "cloudSignIn", "cloudSignOut", "cloudStatus",
-                "deleteRoomNote", "dismissUpdate", "downloadUpdate",
-                "exportNotesFile", "getCityGuide", "getGMTPlus3Time", "inspectRoomNote", "installUpdate", "pickNotesFile", "pickPDF", "readRoomFirst",
-                "reconcileRoomNotes", "requestDataSafetyStatus", "requestRoomNotes", "restoreRoomNotes", "resumeRoomImports", "retryUpdate", "roomFirstMode",
+                "cancelReminder", "deleteRoomNote", "dismissUpdate", "downloadUpdate",
+                "exportNotesFile", "getCityGuide", "getGMTPlus3Time", "inspectRoomNote", "installUpdate", "listReminders", "pickNotesFile", "pickPDF", "readRoomFirst",
+                "reconcileRoomNotes", "requestDataSafetyStatus", "requestReminderPermission", "requestRoomNotes", "restoreRoomNotes", "resumeRoomImports", "retryUpdate", "roomFirstMode",
                 "roomFirstSwitch", "saveNotesToRoom", "scheduleReminder", "setAutoDownloadUpdates", "setPrereleaseUpdates",
                 "shareNote", "startMultiModalRecording",
                 "startRecording", "stopMultiModalRecording", "stopRecording", "undoRoomResolution", "updaterSettings", "upsertRoomNote",
@@ -29,6 +29,15 @@ class BridgeSecurityTest {
             ),
             exposed
         )
+    }
+
+    @Test
+    fun reminderBridgeOnlyAcceptsReminderFieldsAndId() {
+        val params = bridge.declaredMethods.associate { it.name to it.parameterTypes.map { p -> p.simpleName } }
+        assertEquals(listOf("String", "String", "long"), params["scheduleReminder"])
+        assertEquals(listOf("int"), params["cancelReminder"])
+        assertEquals(emptyList<String>(), params["listReminders"])
+        assertEquals(emptyList<String>(), params["requestReminderPermission"])
     }
 
     /**
