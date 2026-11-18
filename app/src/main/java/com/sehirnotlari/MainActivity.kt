@@ -38,10 +38,8 @@ import org.json.JSONArray
 import kotlinx.coroutines.sync.withLock
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -61,6 +59,7 @@ import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebChromeClient
 import android.webkit.GeolocationPermissions
 import androidx.activity.OnBackPressedCallback
@@ -163,6 +162,10 @@ class MainActivity : AppCompatActivity() {
         if (granted) startRecordingInternal() else webView.evaluateJavascript("toast('Mikrofon izni reddedildi')", null)
     }
 
+    private val reminderPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) webView.evaluateJavascript("toast('Bildirim izni olmadan hatırlatıcı kurulamaz')", null)
+    }
+
     private val multimodalPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -239,6 +242,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         releaseUpdater.onResume()
+        Reminders.restore(this)
     }
 
     // Leaving the app is the moment for the automatic backup; the page decides whether it is on.
@@ -340,14 +344,30 @@ class MainActivity : AppCompatActivity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             allowFileAccess = true
+            allowFileAccessFromFileURLs = false
+            allowUniversalAccessFromFileURLs = false
             useWideViewPort = true
             loadWithOverviewMode = true
             setGeolocationEnabled(true)
         }
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean {
+                if (!request.isForMainFrame) return false
+                val uri = request.url
+                if (uri.toString() == "file:///android_asset/index.html") return false
+                if (uri.scheme == "https" || uri.scheme == "http" || uri.scheme == "mailto") {
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    } catch (_: ActivityNotFoundException) {
+                        // An unavailable external app must never cause a WebView fallback.
+                    }
+                }
+                return true
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                if (url != null && url.contains("index.html")) {
+                if (url == "file:///android_asset/index.html") {
                     releaseUpdater.onWebViewReady()
                     pageReady = true
                     pendingFileScript?.let { pendingFileScript = null; webView.evaluateJavascript(it, null) }
@@ -1209,17 +1229,20 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
-        fun scheduleReminder(city: String, message: String, timestamp: Long) {
-            val intent = Intent(mContext, ReminderReceiver::class.java).apply {
-                putExtra("city", city)
-                putExtra("message", message)
+        fun scheduleReminder(city: String, message: String, timestamp: Long): String =
+            Reminders.add(mContext, city, message, timestamp).toString()
+
+        @JavascriptInterface
+        fun listReminders(): String = Reminders.list(mContext)
+
+        @JavascriptInterface
+        fun cancelReminder(id: Int): Boolean = Reminders.remove(mContext, id)
+
+        @JavascriptInterface
+        fun requestReminderPermission() {
+            if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(mContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                runOnUiThread { reminderPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
             }
-            val pendingIntent = PendingIntent.getBroadcast(mContext, System.currentTimeMillis().toInt(), intent, PendingIntent.FLAG_IMMUTABLE)
-            val alarmManager = mContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timestamp, pendingIntent)
-                else alarmManager.setExact(AlarmManager.RTC_WAKEUP, timestamp, pendingIntent)
-            } catch (e: SecurityException) { alarmManager.set(AlarmManager.RTC_WAKEUP, timestamp, pendingIntent) }
         }
 
         @JavascriptInterface

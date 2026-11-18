@@ -2,6 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="frame-src 'none'; object-src 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#1a2332">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -9,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Şehir Notları">
 <link rel="manifest" href="./manifest.json">
 <title>Türkiye Şehir Notları</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="./vendor/leaflet/leaflet.css">
 <style>
 :root{
   --bg:#eef2f5;--surf:#fff;--surf2:#f5f7fa;--brd:#dde3ea;
@@ -471,7 +472,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
     <h1 style="font-family:'Segoe UI',Roboto,Helvetica,sans-serif;letter-spacing:-0.5px;font-style:normal">Türkiye Şehir Notları</h1>
   </div>
 </header>
-<div class="offline-bar" id="offlineBar" role="status">📡 Çevrimdışı — notlarınız çalışmaya devam ediyor</div>
+<div class="offline-bar" id="offlineBar" role="status">📡 Çevrimdışı — il haritası ve notlarınız çalışmaya devam ediyor</div>
 
 <main class="views">
 <section class="view" id="view-map" aria-labelledby="mapTitle">
@@ -483,7 +484,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
     <div class="map-err" id="mapError" hidden>
       <div class="map-err-card" role="alert">
         <strong>Harita yüklenemedi</strong>
-        <p>İnternet bağlantınızı kontrol edin. Notlarınız güvende; şehri listeden seçerek not ekleyebilirsiniz.</p>
+        <p>Harita verisi açılamadı. Notlarınız güvende; şehri listeden seçerek not ekleyebilirsiniz.</p>
         <button type="button" class="city-btn primary" id="mapRetry">Tekrar dene</button>
         <button type="button" class="city-btn secondary" id="mapPick">Şehir listesinden seç</button>
       </div>
@@ -751,10 +752,11 @@ body.undo-on .toast:not(.show){visibility:hidden}
   <div class="sub-box" role="dialog" aria-modal="true" aria-labelledby="remTitle">
     <h3 id="remTitle"><span aria-hidden="true">🔔</span> Hatırlatıcı Kur</h3>
     <p style="font-size:13px;color:var(--txt3);margin-bottom:12px">Seçilen zamanda bildirim alırsınız.</p>
-    <div class="ff"><label for="remCity">Şehir</label><input id="remCity" type="text" placeholder="Şehir adı…"></div>
+    <div class="ff"><label for="remCity">Şehir</label><input id="remCity" type="text" placeholder="Şehir adı…" maxlength="80"></div>
     <div class="ff"><label for="remMsg">Mesaj</label><input id="remMsg" type="text" placeholder="Hatırlatıcı mesajı…" maxlength="80"></div>
     <div class="ff"><label for="remTime">Tarih &amp; Saat</label><input type="datetime-local" id="remTime" style="width:100%;padding:9px 11px;border-radius:var(--rsm);border:1.5px solid var(--brd);font-size:14px;font-family:inherit;color:var(--txt);background:var(--surf);outline:none;-webkit-appearance:none"></div>
     <div class="sub-row"><button class="ok" onclick="saveReminder()">Kur</button><button class="cancel" onclick="document.getElementById('remOv').classList.remove('open')">İptal</button></div>
+    <div id="remList" role="list" aria-label="Yaklaşan hatırlatıcılar"></div>
   </div>
 </div>
 
@@ -825,7 +827,8 @@ body.undo-on .toast:not(.show){visibility:hidden}
 <div class="undo-bar" id="undoBar" role="status" aria-live="polite" hidden><span id="undoText"></span><button type="button" id="undoBtn">Geri Al</button></div>
 <div class="rf-bar" id="rfBar" role="status" aria-live="polite" hidden></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="./vendor/leaflet/leaflet.js"></script>
+<script src="./data/tr-cities.js"></script>
 <script src="note-ids.js"></script>
 <script src="note-delete.js"></script>
 <script src="city-pick.js"></script>
@@ -932,13 +935,11 @@ function buildPins(){
   });
 }
 
-// Leaflet and the province borders come from CDNs: offline the map shows a retry card,
-// and notes stay reachable through "+ Not Ekle" and Notlarım.
+// Leaflet and province borders are bundled; only optional background tiles need the network.
 function loadLeaflet(){
   if(window.L)return Promise.resolve();
   return new Promise((resolve,reject)=>{
-    const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css);
-    const s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    const s=document.createElement('script');s.src='./vendor/leaflet/leaflet.js';
     s.onload=()=>window.L?resolve():reject(new Error('Leaflet missing'));s.onerror=()=>{s.remove();reject(new Error('Leaflet unavailable'));};
     document.head.appendChild(s);
   });
@@ -955,8 +956,11 @@ async function loadMap(){
   try{await loadLeaflet();}catch{mapFailed();return;}
   if(lmap){await loadProvinces();return;}
   lmap=L.map('map',{center:[39.0,35.5],zoom:6,zoomControl:false,keyboard:false,minZoom:5,maxZoom:12,maxBounds:[[34.0,23.5],[43.5,46.5]],maxBoundsViscosity:1.0});
+  lmap.attributionControl.addAttribution('İl sınırları: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap katkıda bulunanlar</a> (ODbL)');
   const addTile=()=>{
     if(lmap._tile)lmap.removeLayer(lmap._tile);
+    lmap._tile=null;
+    if(!navigator.onLine)return;
     // CARTO free basemaps now return blank/API-key stubs; use keyless providers.
     if(isDark()){
       lmap._tile=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles &copy; <a href="https://www.esri.com/">Esri</a>',maxZoom:16,detectRetina:true}).addTo(lmap);
@@ -969,12 +973,7 @@ async function loadMap(){
   await loadProvinces();
 }
 async function loadProvinces(){
-  let geo=null;
-  for(const url of['https://cdn.jsdelivr.net/gh/cihadturhan/tr-map@master/geo/tr-cities-utf8.json','https://raw.githubusercontent.com/cihadturhan/tr-map/master/geo/tr-cities-utf8.json']){
-    const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
-    try{const r=await fetch(url,{signal:ctl.signal});if(r.ok){geo=await r.json();break;}}catch{}
-    finally{clearTimeout(timer);}
-  }
+  const geo=window.PROVINCE_GEOJSON;
   if(!geo){mapFailed();return;}
   document.getElementById('mapLoading').style.display='none';document.getElementById('view-map').classList.remove('map-off');
   if(geoLayer)lmap.removeLayer(geoLayer);
@@ -1141,6 +1140,7 @@ document.getElementById('micStopBtn').onclick=()=>{
     }
 };
 document.getElementById('remBtn').onclick=()=>{
+  if(window.Android?.requestReminderPermission)window.Android.requestReminderPermission();
   document.getElementById('remCity').value=curCity||'';
   document.getElementById('remMsg').value=curCity?`${curCity} şehri için notlarına bak!`:'';
 
@@ -1155,8 +1155,24 @@ document.getElementById('remBtn').onclick=()=>{
 
   document.getElementById('remTime').value = localISOTime;
   document.getElementById('remOv').classList.add('open');
+  renderReminders();
 };
 document.getElementById('cityRem').onclick=()=>document.getElementById('remBtn').onclick();
+function renderReminders(){
+  const box=document.getElementById('remList');box.replaceChildren();
+  if(!window.Android?.listReminders)return;
+  let items=[];try{items=JSON.parse(window.Android.listReminders());}catch{return;}
+  items.filter(x=>x.time>Date.now()).sort((a,b)=>a.time-b.time).forEach(item=>{
+    const row=document.createElement('div');row.setAttribute('role','listitem');row.className='set-row';
+    const label=document.createElement('span');label.className='set-txt';
+    const title=document.createElement('strong');title.textContent=item.city;
+    const detail=document.createElement('span');detail.textContent=`${new Date(item.time).toLocaleString('tr-TR')} · ${item.message}`;
+    label.append(title,detail);
+    const cancel=document.createElement('button');cancel.type='button';cancel.className='bk-btn secondary';cancel.textContent='İptal';cancel.setAttribute('aria-label',`${item.city} hatırlatıcısını iptal et`);
+    cancel.onclick=()=>{if(window.Android.cancelReminder(item.id)){toast('Hatırlatıcı iptal edildi');renderReminders();}else toast('Hatırlatıcı iptal edilemedi');};
+    row.append(label,cancel);box.appendChild(row);
+  });
+}
 function saveReminder(){
   const city=document.getElementById('remCity').value.trim(),
         msg=document.getElementById('remMsg').value.trim()||`${city} hatırlatıcısı`,
@@ -1171,8 +1187,12 @@ function saveReminder(){
   if(delay<=0){toast('Geçmiş zaman!');return;}
 
   if(window.Android && window.Android.scheduleReminder){
-    window.Android.scheduleReminder(city, msg, timestamp);
-    toast('✅ Hatırlatıcı kuruldu (GMT+3)');
+    try{
+      const result=JSON.parse(window.Android.scheduleReminder(city,msg,timestamp));
+      if(result.error){toast(result.error);return;}
+      toast(result.exact?'✅ Hatırlatıcı kuruldu':'✅ Hatırlatıcı kuruldu; sistem bildirimi geciktirebilir');
+      renderReminders();
+    }catch{toast('Hatırlatıcı kurulamadı');return;}
   } else if('Notification' in window){
     Notification.requestPermission().then(p=>{
       if(p==='granted'){
@@ -1246,7 +1266,7 @@ document.getElementById('cats').onclick=e=>{const c=e.target.closest('.cat');if(
 
 // Weather
 const wxC={};
-async function fetchWx(city){const now=Date.now();if(wxC[city]&&now-wxC[city].ts<30*60*1000)return wxC[city].d;const c=CITY_COORDS[city];if(!c)return null;try{const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c[0]}&longitude=${c[1]}&current_weather=true&hourly=relative_humidity_2m,apparent_temperature&timezone=Europe%2FIstanbul&forecast_days=1`);if(!r.ok)return null;const d=await r.json();const cw=d.current_weather,h=new Date().getHours();const res={temp:Math.round(cw.temperature),feel:d.hourly?.apparent_temperature?.[h]!=null?Math.round(d.hourly.apparent_temperature[h]):null,wind:Math.round(cw.windspeed),desc:WMO[cw.weathercode]||'—',hum:d.hourly?.relative_humidity_2m?.[h]??null};wxC[city]={ts:now,d:res};return res;}catch{return null;}}
+async function fetchWx(city){const now=Date.now();if(wxC[city]&&now-wxC[city].ts<30*60*1000)return wxC[city].d;const c=CITY_COORDS[city];if(!c)return null;try{const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c[0]}&longitude=${c[1]}&current_weather=true&hourly=relative_humidity_2m,apparent_temperature&timezone=Europe%2FIstanbul&forecast_days=1`);if(!r.ok)return null;const d=await r.json();const cw=d.current_weather;if(!cw)return null;const h=d.hourly?.time?.indexOf(cw.time)??-1;const feel=h>=0?d.hourly?.apparent_temperature?.[h]:null;const hum=h>=0?d.hourly?.relative_humidity_2m?.[h]:null;const res={temp:Math.round(cw.temperature),feel:feel!=null?Math.round(feel):null,wind:Math.round(cw.windspeed),desc:WMO[cw.weathercode]||'—',hum:hum??null};wxC[city]={ts:now,d:res};return res;}catch{return null;}}
 function wxHTML(w){if(!w)return'<div class="wx-err">📡 Hava verisi alınamadı</div>';const ps=w.desc.split(' ');return`<div class="wx-card"><span class="wx-icon">${ps[0]}</span><span class="wx-temp">${w.temp}°</span><div class="wx-right"><div class="wx-desc">${ps.slice(1).join(' ')}</div><div class="wx-details">${w.feel!=null?`<span>🌡️ Hissedilen ${w.feel}°</span>`:''} ${w.hum!=null?`<span>💧 %${w.hum}</span>`:''}<span>💨 ${w.wind}km/s</span></div></div></div>`;}
 
 // Modal
@@ -2390,8 +2410,8 @@ function emailNotes(){const cs=Object.keys(DB).filter(c=>DB[c]&&DB[c].length);if
 function clearAll(){if(!confirm('Tüm notlar silinecek. Emin misiniz?'))return;settleDelete();const oldDB=DB;DB={};sv();Object.entries(oldDB).forEach(([city,notes])=>{if(Array.isArray(notes))notes.forEach(note=>mirrorDeletedNoteToRoom(city,note.id));});updateStyles();updateSum();toast('Tüm notlar yerel olarak silindi');}
 
 const offBar=document.getElementById('offlineBar');
-window.addEventListener('online',()=>offBar.classList.remove('show'));
-window.addEventListener('offline',()=>offBar.classList.add('show'));
+window.addEventListener('online',()=>{offBar.classList.remove('show');if(lmap?._addTile)lmap._addTile();});
+window.addEventListener('offline',()=>{offBar.classList.add('show');if(lmap?._addTile)lmap._addTile();});
 if(!navigator.onLine)offBar.classList.add('show');
 
 let dP=null;const banner=document.getElementById('pwaBanner');
