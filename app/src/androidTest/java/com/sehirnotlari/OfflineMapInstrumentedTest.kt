@@ -8,29 +8,40 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
 class OfflineMapInstrumentedTest {
     @Test
     fun bundledMapRendersAllProvincesInWebView() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120)
-            var result = ""
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60)
+            val result = AtomicReference("")
+            val pageState = AtomicReference("")
+            scenario.onActivity { activity ->
+                activity.findViewById<WebView>(R.id.webView).apply {
+                    setNetworkAvailable(false)
+                    reload()
+                }
+            }
             while (System.nanoTime() < deadline) {
                 val done = CountDownLatch(1)
                 scenario.onActivity { activity ->
-                    activity.findViewById<WebView>(R.id.webView).evaluateJavascript(
-                        "Boolean(window.L && mapReady && window.PROVINCE_GEOJSON.features.length === 81 && geoLayer.getLayers().length === 81)"
-                    ) {
-                        result = it
-                        done.countDown()
+                    activity.findViewById<WebView>(R.id.webView).apply {
+                        pageState.set("url=$url progress=$progress")
+                        evaluateJavascript(
+                            "Boolean(!navigator.onLine && window.L && mapReady && window.PROVINCE_GEOJSON.features.length === 81 && geoLayer && geoLayer.getLayers().length === 81 && !lmap._tile)"
+                        ) {
+                            result.set(it)
+                            done.countDown()
+                        }
                     }
                 }
-                done.await(15, TimeUnit.SECONDS)
-                if (result == "true") break
+                done.await(5, TimeUnit.SECONDS)
+                if (result.get() == "true") break
                 Thread.sleep(250)
             }
-            assertEquals("Bundled Leaflet map did not render 81 provinces", "true", result)
+            assertEquals("Offline map failed: ${pageState.get()}, js=${result.get()}", "true", result.get())
         }
     }
 }
