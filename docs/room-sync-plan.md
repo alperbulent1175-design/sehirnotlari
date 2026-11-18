@@ -1,5 +1,7 @@
 # Room + isteğe bağlı hesap / cihazlar arası senkronizasyon
 
+> Tarihsel taslak: Aşağıdaki “mevcut durum” artık güncel değildir. Güncel Room üretim kapıları için [room-production-readiness.md](room-production-readiness.md), yayın geçmişi için `DEVAM.md` okunmalıdır.
+
 ## Mevcut durum (kod incelemesi)
 - WebView notları `app/src/main/assets/index.html` içinde `localStorage` / `DB` nesnesine yazılıyor.
 - `MainActivity.kt` içinde Firebase Realtime Database'e `backups/{Build.MODEL_Build.ID}` yolundan JSON yedekleme/geri yükleme yapılıyor.

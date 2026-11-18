@@ -5,7 +5,7 @@ Android uygulaması: Kotlin WebView kabuğu, yerel HTML/JavaScript arayüzü, ş
 ## Derleme
 
 - JDK 21, Android SDK 37 ve Gradle wrapper gerekir.
-- `./gradlew :app:assembleDebug :app:testDebugUnitTest`
+- `bash ./gradlew :app:assembleDebug :app:testDebugUnitTest`
 - Firebase yapılandırması yokken bulut yedeği devre dışı kalır. `app/google-services.json` yerel dosyadır ve depoya eklenmez.
 - Yapay zekâ özellikleri için `local.properties` içinde `GEMINI_API_KEY` gerekir. Anahtar bulunmazsa özellikler devre dışı kalır. Yayın APK'sına gömülü anahtarın çıkarılabileceği unutulmamalıdır; üretimde anahtar sunucu tarafında tutulmalıdır.
 - Firestore kural testleri: `cd firebase && npm ci && npm test` (Firebase emülatörleri gerekir).
@@ -13,5 +13,7 @@ Android uygulaması: Kotlin WebView kabuğu, yerel HTML/JavaScript arayüzü, ş
 ## Veri
 
 Üretimde notların ana kaydı WebView `localStorage` içindedir; Room kopyası veri tutarlılığı için kullanılır. Room-first yalnız debug prototipidir. JSON dışa aktarma ve isteğe bağlı Firebase bulut yedeği vardır. Telefon değiştirmeden önce JSON yedeği alın.
+
+Room'u üretimde ana kayıt yapma kararı ve geçiş kapıları için [Room üretim hazırlığı](docs/room-production-readiness.md) belgesine bakın.
 
 Leaflet BSD 2-Clause lisansıyla, il sınırları OpenStreetMap ODbL atfıyla uygulamaya paketlenmiştir. Ayrıntılar `app/src/main/assets/vendor/leaflet/LICENSE` ve `app/src/main/assets/data/ATTRIBUTION.md` dosyalarındadır.
