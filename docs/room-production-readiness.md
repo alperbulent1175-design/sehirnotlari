@@ -6,13 +6,13 @@
 
 - Üretimde `index.html` içindeki `DB` ilk olarak `tur_v10` (`localStorage`) verisini okur; `sv()` aynı anahtara yazar. Room'a gölge yazma, fark denetimi, onarım ve tombstone desteği vardır.
 - `RoomFirstSwitch` yalnız debug derlemede kullanılabilir. Geçiş öncesi bütün farklar ve çözümlenmemiş günlük girdileri sıfır olmalı; yerel kopya ve bütün Room satırları SHA-256 doğrulamalı özel dosyaya yedeklenir. Daha sonra kalıcı mod bayrağı yazılır.
-- Room-first yazıları sürüm bileti ve istek kimliğiyle korunur. Yanıtı kaybolan **gönderilmiş** istekler sayfa yeniden açıldığında outbox üzerinden tekrar gönderilebilir. Henüz gönderilmemiş `pending` düzenlemeler yalnız JavaScript belleğindedir.
+- Room-first yazıları sürüm bileti ve istek kimliğiyle korunur. Yanıtı kaybolan gönderilmiş istekler ve arkalarında bekleyen düzenlemeler sayfa yeniden açıldığında `localStorage` outbox'ından tekrar yürütülür. WebView'ın `localStorage` yazılarını güç kesintisine kadar diske indirme garantisi olmadığı için bu, üretimde native kalıcı kuyruğun yerini tutmaz.
 - `cloudBackup` ve `cloudFetchBackup` Room-first açıkken reddedilir. Üretimde bu modu doğrudan açmak, mevcut bulut yedeği ve geri yüklemeyi devre dışı bırakır.
 - Cloud biçimi v1, `tur_v10` not nesnesi ve Room silme kayıtlarını taşır. Geri yükleme yalnız ekleme önizlemesiyle çalışır. Eşitleme özelliği değildir.
 
 ## Üretim kararları
 
-1. **Kaynak ve kayıt onayı:** Room commit'i tek başarı ölçütü olmalı. UI, yanıt gelmeden düzenlemeyi kaydedilmiş göstermemeli. Henüz gönderilmemiş düzenlemeleri de kalıcı kuyruğa almak veya sayfa kapanışını kesin biçimde engellemek gerekir; yalnız bellek içi `pending` yeterli değildir.
+1. **Kaynak ve kayıt onayı:** Room commit'i tek başarı ölçütü olmalı. UI, yanıt gelmeden düzenlemeyi kaydedilmiş göstermemeli. Prototipte bekleyen düzenlemeler artık WebView outbox'ında tutulur; üretimde güç kesintisine dayanıklı native kuyruk veya eşdeğer kanıtlı çözüm gerekir.
 2. **Yedek uyumu:** Room snapshot'ından mevcut cloud v1 biçimine kayıpsız `tur_v10` dönüşümü yazılmalı. Bulut yedeği sadece Room'un doğrulanmış commit durumundan alınmalı. Geri yükleme, onaydan sonra Room'a tek işlem veya tekrar denenebilir stage ile yazılmalı; tombstone açık onay olmadan diriltilmemeli.
 3. **Dayanıklılık:** Mevcut cihaz raporunda `WAL / synchronous=NORMAL` kullanılmıştır. Son onaylanmış commit'in güç kesintisinde korunması şartsa üretimde `FULL` seçilmeli; cihazdaki gecikme ölçümüyle karar doğrulanmalı. Uygulama çökmesi ve güç kesintisi ayrı test edilmelidir.
 4. **Eski sürüme dönüş:** Room ana kaynak olduktan sonra eski APK yalnız `localStorage` okur. Geri dönüşte Room snapshot'ı tam ve doğrulanmış biçimde `tur_v10` içine yazılmadan eski sürüm kurulursa son notlar görünmez. Geri dönüş işlemi ayrı, kullanıcıya görünür bir işlem olmalı.

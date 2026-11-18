@@ -131,6 +131,34 @@ class RoomFirstScriptTest {
     }
 
     @Test
+    fun editWaitingBehindAnInflightWriteSurvivesReload() {
+        js("s.hydrate(snap([row('Ankara', 42, 'İlk', 500)]))")
+        js("s.save('Ankara', note(42, 'Birinci')); s.save('Ankara', note(42, 'İkinci'))")
+        assertEquals(2, num("JSON.parse(mem[RoomFirst.OUTBOX_KEY]).length"))
+        val firstId = str("sent[0].id")
+
+        js("var t = mk(); sent = []; t.hydrate(snap([row('Ankara', 42, 'İlk', 500)])); t.resume()")
+        assertEquals(1, num("sent.length"))
+        assertEquals(firstId, str("sent[0].id"))
+        assertEquals("İkinci", str("t.view().Ankara[0].title"))
+        js("t.onResult(sent[0].id, reply('COMMITTED', row('Ankara', 42, 'Birinci', 501), true), null)")
+        assertEquals(2, num("sent.length"))
+        assertEquals(501, num("sent[1].p.base"))
+        assertEquals("İkinci", str("sent[1].p.note.title"))
+        js("t.onResult(sent[1].id, reply('COMMITTED', row('Ankara', 42, 'İkinci', 502), true), null)")
+        assertEquals("[]", str("mem[RoomFirst.OUTBOX_KEY]"))
+    }
+
+    @Test
+    fun pendingOnlyEntryIsSentAfterReload() {
+        js("mem[RoomFirst.OUTBOX_KEY] = JSON.stringify([{state:'pending',op:'UPSERT',city:'Van',id:9,note:note(9,'Taslak'),seq:1}])")
+        js("var t = mk(); t.hydrate(snap([]))")
+        assertEquals(1, num("t.resume()"))
+        assertEquals("Taslak", str("last().p.note.title"))
+        assertEquals(0, num("last().p.base"))
+    }
+
+    @Test
     fun failuresAndRefusalsAreNeverShownAsSaved() {
         js("s.hydrate(snap([row('Bursa', 7, 'Ulu Cami', 100), row('Bursa', 8, 'Kebap', 200)]))")
         js("s.save('Bursa', note(7, 'hata alacak'))")

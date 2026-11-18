@@ -2,8 +2,8 @@
 // every change as one request; a note counts as saved only after native reports that the Room
 // transaction committed. One request per note is in flight; edits made meanwhile are coalesced
 // (the latest full note wins) and sent with the ticket of the version they were made from.
-// In-flight requests are kept in an outbox and re-sent unchanged after a reload; native compares
-// the request's base ticket with Room's row, so a request whose reply was lost is never applied twice.
+// In-flight requests and edits waiting behind them are kept in an outbox. After a reload, native
+// compares a re-sent request's base ticket with Room's row, so a lost reply is not applied twice.
 // Pure logic: no DOM, no console, no direct storage access (storage is injected).
 (function (root) {
   'use strict';
@@ -75,7 +75,15 @@
 
     function writeOutbox() {
       var list = [];
-      Object.keys(notes).forEach(function (k) { if (notes[k].inflight) list.push(notes[k].inflight); });
+      function entry(op, state) {
+        var copy = { state: state };
+        Object.keys(op).forEach(function (k) { if (k !== 'state') copy[k] = op[k]; });
+        return copy;
+      }
+      Object.keys(notes).forEach(function (k) {
+        if (notes[k].inflight) list.push(entry(notes[k].inflight, 'inflight'));
+        if (notes[k].pending) list.push(entry(notes[k].pending, 'pending'));
+      });
       list.sort(function (a, b) { return a.seq - b.seq; });
       storage.set(OUTBOX_KEY, JSON.stringify(list));
     }
@@ -98,7 +106,6 @@
         // The bridge call never happened, so nothing can have reached Room.
         delete byRequest[op.requestId];
         e.inflight = null;
-        e.pending = null;
         e.status = 'error';
         writeOutbox();
       }
@@ -118,7 +125,10 @@
     function change(city, id, op) {
       if (!ready) return false;
       var key = keyOf(city, id), e = entryFor(key, city, id);
+      var previous = e.pending;
+      op.seq = ++seq;
       e.pending = op;
+      try { writeOutbox(); } catch (err) { e.pending = previous; return false; }
       if (!e.inflight) dispatch(key);
       else e.status = op.op === 'DELETE' ? 'deleting' : 'saving';
       return true;
@@ -165,12 +175,23 @@
       resume: function () {
         var list = readOutbox().sort(function (a, b) { return a.seq - b.seq; }), sent = 0;
         list.forEach(function (op) {
-          if (!op || !op.requestId || !op.city || op.id === undefined) return;
+          if (!op || !op.city || op.id === undefined || (op.state !== 'pending' && !op.requestId)) return;
           var key = keyOf(op.city, op.id), e = entryFor(key, op.city, op.id);
-          if (e.inflight) return;
           seq = Math.max(seq, op.seq || 0);
-          transmit(key, op);
-          sent++;
+          if (op.state === 'pending') e.pending = op;
+          else if (!e.inflight) e.inflight = op;
+        });
+        Object.keys(notes).forEach(function (key) {
+          var e = notes[key];
+          if (e.inflight) {
+            var op = e.inflight;
+            e.inflight = null;
+            transmit(key, op);
+            sent++;
+          } else if (e.pending) {
+            dispatch(key);
+            sent++;
+          }
         });
         return sent;
       },
