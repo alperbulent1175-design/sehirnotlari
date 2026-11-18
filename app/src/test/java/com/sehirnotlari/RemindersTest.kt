@@ -43,4 +43,14 @@ class RemindersTest {
         assertTrue(result.has("error"))
         assertEquals(0, JSONArray(Reminders.list(context)).length())
     }
+
+    @Test fun overdueReminderIsRetainedUntilDelivery() {
+        val item = """[{"id":7,"city":"Van","message":"Gecikmiş","time":${System.currentTimeMillis() - 60_000}}]"""
+        context.getSharedPreferences("reminders", Context.MODE_PRIVATE).edit().putString("items", item).commit()
+
+        Reminders.restore(context)
+        assertEquals(1, JSONArray(Reminders.list(context)).length())
+        assertEquals("Gecikmiş", Reminders.take(context, 7)?.getString("message"))
+        assertEquals(0, JSONArray(Reminders.list(context)).length())
+    }
 }

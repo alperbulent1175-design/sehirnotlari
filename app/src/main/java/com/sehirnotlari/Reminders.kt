@@ -33,7 +33,10 @@ object Reminders {
 
     private fun arm(context: Context, item: JSONObject): Boolean {
         val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val time = item.getLong("time")
+        // A delayed alarm can still be pending when the app resumes or the device reboots.
+        // Re-arm it promptly; the receiver removes the ledger entry before showing it.
+        val originalTime = item.getLong("time")
+        val time = if (originalTime <= System.currentTimeMillis()) System.currentTimeMillis() + 1_000L else originalTime
         val pi = pending(context, item.getInt("id"))
         val exact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarm.canScheduleExactAlarms()
         return try {
@@ -93,7 +96,6 @@ object Reminders {
             val item = source.optJSONObject(i) ?: continue
             val id = item.optInt("id")
             if (id <= 0) continue
-            if (item.optLong("time") <= System.currentTimeMillis()) { remove(context, id); continue }
             try { arm(context, item) } catch (_: Exception) { /* Retain for next launch. */ }
         }
     }
