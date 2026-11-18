@@ -43,3 +43,26 @@ jobs:
           cache-dependency-path: firebase/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm test
+
+  android-webview:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager --channel=3 'platforms;android-37.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          script: bash ./gradlew :app:connectedDebugAndroidTest --no-daemon
