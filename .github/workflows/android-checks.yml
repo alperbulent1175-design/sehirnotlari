@@ -1,4 +1,4 @@
-name: Android checks
+name: Project checks
 
 on:
   pull_request:
@@ -22,3 +22,24 @@ jobs:
       - run: sdkmanager --channel=3 'platforms;android-37.0'
       - uses: gradle/actions/setup-gradle@v4
       - run: bash ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon
+
+  firestore-rules:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: firebase
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: firebase/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test

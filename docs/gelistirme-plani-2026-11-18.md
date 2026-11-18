@@ -44,7 +44,7 @@ Tarih: 18 Kasım 2026. Temel: `main` dalı, `ba2d810`. Bu belge kod incelemesidi
 
 ### P2.2 Belgeleri ve doğrulama akışını güncelle
 
-- **Durum:** Güncel başlangıç `README.md` eklendi. Pull request ve `main` için Android derleme/birim testi CI akışı eklendi; ilk CI çalışması bekliyor.
+- **Durum:** Güncel başlangıç `README.md` eklendi. Pull request ve `main` için Android derleme/birim testi CI akışı çalışıyor. Firestore kural emülatör testleri (25/25 yerelde geçti) ayrı CI işi olarak eklendi; ilk CI çalışması bekliyor.
 - **Kanıt:** `HANDOVER.md` sürüm 1.0'ı ve tamamlanmış bulut işlerini gelecek görev olarak anlatıyor; kod sürümü 1.4. `.github` altında CI iş akışı bulunmuyor.
 - **İş:** Tek güncel başlangıç belgesi yaz; eski devralma belgesini arşiv olarak işaretle. Birim testleri ve Firebase kural testleri için CI ekle; Android SDK gerektiren testleri uygun çalıştırıcıya koy.
 - **Kabul:** Yeni geliştirici güncel sürümü, derleme ön koşullarını, hangi özelliklerin anahtar veya Firebase yapılandırması gerektirdiğini ve test komutlarını tek yerden bulur.
