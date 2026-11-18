@@ -67,10 +67,18 @@
     }
 
     function readOutbox() {
+      var raw;
       try {
-        var list = JSON.parse(storage.get(OUTBOX_KEY) || '[]');
-        return Array.isArray(list) ? list : [];
-      } catch (e) { return []; }
+        raw = storage.get(OUTBOX_KEY);
+        if (raw === null || raw === undefined) return [];
+        var list = JSON.parse(raw);
+        if (!Array.isArray(list) || list.some(function (op) {
+          return !op || (op.state !== 'pending' && op.state !== 'inflight') ||
+            (op.op !== 'UPSERT' && op.op !== 'DELETE') || !op.city || op.id === undefined ||
+            (op.op === 'UPSERT' && !op.note) || (op.state === 'inflight' && !op.requestId);
+        })) throw new Error('invalid outbox');
+        return list;
+      } catch (e) { throw new Error('Room pending writes could not be read'); }
     }
 
     function writeOutbox() {
@@ -184,7 +192,6 @@
       resume: function () {
         var list = readOutbox().sort(function (a, b) { return a.seq - b.seq; }), sent = 0;
         list.forEach(function (op) {
-          if (!op || !op.city || op.id === undefined || (op.state !== 'pending' && !op.requestId)) return;
           var key = keyOf(op.city, op.id), e = entryFor(key, op.city, op.id);
           seq = Math.max(seq, op.seq || 0);
           if (op.state === 'pending') e.pending = op;

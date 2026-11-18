@@ -1783,9 +1783,9 @@ function rfShowAll(){
   rfRefresh();
 }
 function rfCommitFromDB(){
-  if(!rfStore||!rfStore.isReady()){
-    DB={};
-    rfHoldToast(rfFailed?'⚠️ Room okunamadı; değişiklik kaydedilmedi':'Notlar Room’dan yükleniyor; değişiklik kaydedilmedi');
+  if(rfFailed||!rfStore||!rfStore.isReady()){
+    DB=rfStore&&rfStore.isReady()?rfStore.view():{};
+    rfHoldToast(rfFailed?'⚠️ Bekleyen yazılar okunamadı; değişiklik kaydedilmedi':'Notlar Room’dan yükleniyor; değişiklik kaydedilmedi');
     return;
   }
   const before=rfStore.view(),seen=new Set();let saving=0,deleting=0,failed=0;
@@ -1822,8 +1822,13 @@ async function rfStart(){
     const snap=await dsCall('readRoomFirst',[]);
     rfStore.hydrate(snap);
     rfDurability=`${snap.journalMode} / synchronous=${snap.synchronous}`;
-    const resent=rfStore.resume();
-    console.info('[RoomFirst] read active='+snap.active+' tombstones='+snap.tombstones+' resent='+resent);
+    try{
+      const resent=rfStore.resume();
+      console.info('[RoomFirst] read active='+snap.active+' tombstones='+snap.tombstones+' resent='+resent);
+    }catch(e){
+      rfFailed=true;console.info('[RoomFirst] pending writes unavailable: '+e.message);
+      toast('⚠️ Bekleyen yazılar okunamadı; yeni değişiklikler engellendi.');
+    }
     rfShowAll();
   }catch(e){
     rfFailed=true;console.info('[RoomFirst] read failed: '+e.message);
@@ -1834,7 +1839,7 @@ function rfRefresh(){
   if(RF_MODE){
     const bar=document.getElementById('rfBar'),n=rfStore?rfStore.pendingCount():0,errors=rfStore?rfStore.errorCount():0;
     bar.hidden=false;bar.classList.toggle('err',rfFailed||!!errors);document.body.classList.add('rf-on');
-    bar.textContent=rfFailed?'Room ana kaynak: Room okunamadı, notlar gösterilmiyor':
+    bar.textContent=rfFailed?(rfStore&&rfStore.isReady()?'Room ana kaynak: bekleyen yazılar okunamadı; yeni kayıt engellendi':'Room ana kaynak: Room okunamadı, notlar gösterilmiyor'):
       !rfStore||!rfStore.isReady()?'Room ana kaynak: notlar yükleniyor…':
       errors?`Room ana kaynak: ${errors} not kaydedilemedi`:
       n?`Room ana kaynak: ${n} not kaydediliyor…`:'Room ana kaynak: değişiklikler Room’a kaydedildi';

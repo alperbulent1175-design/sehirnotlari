@@ -159,6 +159,16 @@ class RoomFirstScriptTest {
     }
 
     @Test
+    fun corruptOutboxIsNotSilentlyTreatedAsEmpty() {
+        js("mem[RoomFirst.OUTBOX_KEY] = '{broken'; var t = mk(); t.hydrate(snap([row('Bursa', 7, 'Eski', 100)]))")
+        assertEquals("Room pending writes could not be read", str("try { t.resume(); 'no error' } catch(e) { e.message }"))
+        assertEquals(0, num("sent.length"))
+        assertEquals("{broken", str("mem[RoomFirst.OUTBOX_KEY]"))
+        js("mem[RoomFirst.OUTBOX_KEY] = JSON.stringify([{state:'pending',op:'UPSERT',city:'Bursa',id:7}])")
+        assertEquals("Room pending writes could not be read", str("try { t.resume(); 'no error' } catch(e) { e.message }"))
+    }
+
+    @Test
     fun failuresAndRefusalsAreNeverShownAsSaved() {
         js("s.hydrate(snap([row('Bursa', 7, 'Ulu Cami', 100), row('Bursa', 8, 'Kebap', 200)]))")
         js("s.save('Bursa', note(7, 'hata alacak'))")
