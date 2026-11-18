@@ -99,27 +99,36 @@
       e.inflight = op;
       e.status = op.op === 'DELETE' ? 'deleting' : 'saving';
       byRequest[op.requestId] = key;
-      writeOutbox();
+      try { writeOutbox(); }
+      catch (err) {
+        delete byRequest[op.requestId];
+        e.inflight = null;
+        e.pending = op;
+        e.status = 'error';
+        return false;
+      }
       try {
         send(payload(op), op.requestId);
+        return true;
       } catch (err) {
         // The bridge call never happened, so nothing can have reached Room.
         delete byRequest[op.requestId];
         e.inflight = null;
         e.status = 'error';
-        writeOutbox();
+        try { writeOutbox(); } catch (_) { /* The earlier outbox entry can still be retried on reload. */ }
+        return false;
       }
     }
 
     function dispatch(key) {
       var e = notes[key];
-      if (!e || e.inflight || !e.pending) return;
+      if (!e || e.inflight || !e.pending) return false;
       var op = e.pending;
       e.pending = null;
       op.base = rows[key] ? rows[key].ticket : 0;
       op.requestId = newId();
       op.seq = ++seq;
-      transmit(key, op);
+      return transmit(key, op);
     }
 
     function change(city, id, op) {
@@ -128,8 +137,8 @@
       var previous = e.pending;
       op.seq = ++seq;
       e.pending = op;
-      try { writeOutbox(); } catch (err) { e.pending = previous; return false; }
-      if (!e.inflight) dispatch(key);
+      try { writeOutbox(); } catch (err) { e.pending = previous; e.status = 'error'; return false; }
+      if (!e.inflight) return dispatch(key);
       else e.status = op.op === 'DELETE' ? 'deleting' : 'saving';
       return true;
     }
@@ -253,6 +262,10 @@
 
       pendingCount: function () {
         return Object.keys(notes).filter(function (k) { return notes[k].inflight || notes[k].pending; }).length;
+      },
+
+      errorCount: function () {
+        return Object.keys(notes).filter(function (k) { return notes[k].status === 'error'; }).length;
       }
     };
   }

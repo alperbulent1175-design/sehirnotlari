@@ -1788,17 +1788,18 @@ function rfCommitFromDB(){
     rfHoldToast(rfFailed?'⚠️ Room okunamadı; değişiklik kaydedilmedi':'Notlar Room’dan yükleniyor; değişiklik kaydedilmedi');
     return;
   }
-  const before=rfStore.view(),seen=new Set();let saving=0,deleting=0;
+  const before=rfStore.view(),seen=new Set();let saving=0,deleting=0,failed=0;
   Object.keys(DB).forEach(city=>(Array.isArray(DB[city])?DB[city]:[]).forEach(n=>{
     seen.add(RoomFirst.keyOf(city,n.id));
     const old=(before[city]||[]).find(o=>NoteIds.sameId(o.id,n.id));
-    if((!old||rfSig(old)!==rfSig(n))&&rfStore.save(city,n))saving++;
+    if(!old||rfSig(old)!==rfSig(n)){if(rfStore.save(city,n))saving++;else failed++;}
   }));
   Object.keys(before).forEach(city=>before[city].forEach(n=>{
-    if(!seen.has(RoomFirst.keyOf(city,n.id))&&rfStore.remove(city,n.id))deleting++;
+    if(!seen.has(RoomFirst.keyOf(city,n.id))){if(rfStore.remove(city,n.id))deleting++;else failed++;}
   }));
   DB=rfStore.view();
-  if(saving||deleting)rfHoldToast(deleting&&!saving?RoomFirst.STATUS_TEXT.deleting:RoomFirst.STATUS_TEXT.saving);
+  if(failed)rfHoldToast(RoomFirst.STATUS_TEXT.error);
+  else if(saving||deleting)rfHoldToast(deleting&&!saving?RoomFirst.STATUS_TEXT.deleting:RoomFirst.STATUS_TEXT.saving);
   rfRefresh();
 }
 window.onRoomFirstResult=function(requestId,result,error){
@@ -1831,10 +1832,11 @@ async function rfStart(){
 }
 function rfRefresh(){
   if(RF_MODE){
-    const bar=document.getElementById('rfBar'),n=rfStore?rfStore.pendingCount():0;
-    bar.hidden=false;bar.classList.toggle('err',rfFailed);document.body.classList.add('rf-on');
+    const bar=document.getElementById('rfBar'),n=rfStore?rfStore.pendingCount():0,errors=rfStore?rfStore.errorCount():0;
+    bar.hidden=false;bar.classList.toggle('err',rfFailed||!!errors);document.body.classList.add('rf-on');
     bar.textContent=rfFailed?'Room ana kaynak: Room okunamadı, notlar gösterilmiyor':
       !rfStore||!rfStore.isReady()?'Room ana kaynak: notlar yükleniyor…':
+      errors?`Room ana kaynak: ${errors} not kaydedilemedi`:
       n?`Room ana kaynak: ${n} not kaydediliyor…`:'Room ana kaynak: değişiklikler Room’a kaydedildi';
   }
   rfRenderCard();

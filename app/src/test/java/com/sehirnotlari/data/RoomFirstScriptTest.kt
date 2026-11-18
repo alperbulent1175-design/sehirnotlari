@@ -166,6 +166,7 @@ class RoomFirstScriptTest {
         assertEquals("error", str("err.status"))
         assertEquals("Kaydedilemedi; değişiklik uygulanmadı", str("err.notice"))
         assertEquals("Ulu Cami", str("s.view().Bursa[0].title"))
+        assertEquals(1, num("s.errorCount()"))
 
         js("s.save('Bursa', note(8, 'eski sürümden'))")
         js("var c = s.onResult(last().id, reply('CONFLICT', row('Bursa', 8, 'başka cihazdan', 250), false), null)")
@@ -180,6 +181,25 @@ class RoomFirstScriptTest {
         js("failSend = true; s.save('Bursa', note(7, 'köprü yok'))")
         assertEquals("error", str("s.statusOf('Bursa', 7).status"))
         assertEquals(0, num("s.pendingCount()"))
+        assertEquals("Ulu Cami", str("s.view().Bursa[0].title"))
+    }
+
+    @Test
+    fun outboxFailureDuringDispatchCannotClaimTheWriteWasSaved() {
+        js("s.hydrate(snap([row('Bursa', 7, 'Ulu Cami', 100)])); var writes = 0; storage.set = function(k,v) { if (++writes === 2) throw new Error('quota'); mem[k] = v; }")
+        assertFalse(bool("s.save('Bursa', note(7, 'Yeni'))"))
+        assertEquals(0, num("sent.length"))
+        assertEquals("error", str("s.statusOf('Bursa', 7).status"))
+        assertEquals(1, num("s.errorCount()"))
+        assertEquals("Yeni", str("JSON.parse(mem[RoomFirst.OUTBOX_KEY])[0].note.title"))
+    }
+
+    @Test
+    fun initialOutboxFailureIsReportedWithoutSending() {
+        js("s.hydrate(snap([row('Bursa', 7, 'Ulu Cami', 100)])); storage.set = function() { throw new Error('quota'); }")
+        assertFalse(bool("s.save('Bursa', note(7, 'Yeni'))"))
+        assertEquals(0, num("sent.length"))
+        assertEquals(1, num("s.errorCount()"))
         assertEquals("Ulu Cami", str("s.view().Bursa[0].title"))
     }
 
