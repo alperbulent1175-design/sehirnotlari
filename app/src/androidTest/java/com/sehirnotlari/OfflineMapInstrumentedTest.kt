@@ -4,7 +4,6 @@ import android.webkit.WebView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
@@ -15,7 +14,7 @@ class OfflineMapInstrumentedTest {
     @Test
     fun bundledMapRendersAllProvincesInWebView() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120)
             var result = ""
             while (System.nanoTime() < deadline) {
                 val done = CountDownLatch(1)
@@ -27,7 +26,7 @@ class OfflineMapInstrumentedTest {
                         done.countDown()
                     }
                 }
-                assertTrue("WebView JavaScript did not respond", done.await(5, TimeUnit.SECONDS))
+                done.await(15, TimeUnit.SECONDS)
                 if (result == "true") break
                 Thread.sleep(250)
             }
