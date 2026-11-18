@@ -17,9 +17,9 @@ class BridgeSecurityTest {
         val exposed = bridge.declaredMethods.filter { it.isAnnotationPresent(JavascriptInterface::class.java) }.map { it.name }.sorted()
         assertEquals(
             listOf(
-                "aiAvailable", "applyRoomResolution", "beginRoomRestore", "cancelRoomRestore", "checkForUpdate",
+                "aiAvailable", "applyRoomResolution", "beginRoomRestore", "cancelReminder", "cancelRoomRestore", "checkForUpdate",
                 "cloudBackup", "cloudFetchBackup", "cloudListBackups", "cloudSetAuto", "cloudSignIn", "cloudSignOut", "cloudStatus",
-                "cancelReminder", "deleteRoomNote", "dismissUpdate", "downloadUpdate",
+                "deleteRoomNote", "dismissUpdate", "downloadUpdate",
                 "exportNotesFile", "getCityGuide", "getGMTPlus3Time", "inspectRoomNote", "installUpdate", "listReminders", "pickNotesFile", "pickPDF", "readRoomFirst",
                 "reconcileRoomNotes", "requestDataSafetyStatus", "requestReminderPermission", "requestRoomNotes", "restoreRoomNotes", "resumeRoomImports", "retryUpdate", "roomFirstMode",
                 "roomFirstSwitch", "saveNotesToRoom", "scheduleReminder", "setAutoDownloadUpdates", "setPrereleaseUpdates",
