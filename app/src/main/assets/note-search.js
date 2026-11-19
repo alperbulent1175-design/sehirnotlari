@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var MONTHS = { oca: '01', sub: '02', mar: '03', nis: '04', may: '05', haz: '06', tem: '07', agu: '08', eyl: '09', eki: '10', kas: '11', ara: '12' };
-  function fold(s) { return String(s || '').toLocaleLowerCase('tr-TR').replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c'); }
+  function fold(s) { return String(s || '').replace(/İ/g, 'I').replace(/ı/g, 'i').toLowerCase().replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c'); }
   function dateKey(raw) {
     var s = String(raw || '').trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
