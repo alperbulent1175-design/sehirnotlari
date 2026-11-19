@@ -129,7 +129,8 @@ class RoomMigrationGuardTest {
         val staged = apply.indexOf("if(restore&&!restore.recorded){DB=JSON.parse(before);")
         assertTrue(staged in apply.indexOf("const restore=recordRoomRestore(added);") until apply.indexOf("try{sv();}"))
         assertTrue(apply.substringAfter("if(restore&&!restore.recorded){").substringBefore("}").contains("return{ok:false,"))
-        assertTrue(confirm.indexOf("if(r.ok&&r.pending){") in confirm.indexOf("if(r.ok&&roomRestoreRetry)return;") until confirm.indexOf("✅"))
+        val legacyConfirm = confirm.substringAfter("const r=applyImport(d);")
+        assertTrue(legacyConfirm.indexOf("if(r.ok&&r.pending){") in legacyConfirm.indexOf("if(r.ok&&roomRestoreRetry)return;") until legacyConfirm.indexOf("✅"))
         val result = html.substringAfter("window.onRoomRestoreResult=function(requestId,result,error){").substringBefore("\n};")
         assertTrue(result.indexOf("not içe aktarıldı") > result.indexOf("if(error||!result){roomRestoreFailed("))
         // The import and its startup resume (the same notes, from the staged copy) are the only merges.
