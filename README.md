@@ -1,6 +1,6 @@
 # Türkiye Şehir Notları
 
-Android uygulaması: Kotlin WebView kabuğu, yerel HTML/JavaScript arayüzü, şehir haritası ve notlar. Güncel kaynak sürümü `1.4` (`versionCode 5`); yayın geçmişi ve açık doğrulama işleri için [DEVAM.md](DEVAM.md), öncelikli geliştirme işleri için [geliştirme planı](docs/gelistirme-plani-2026-11-18.md) okunmalıdır. `HANDOVER.md` eski bir devir belgesidir.
+Android uygulaması: Kotlin WebView kabuğu, yerel HTML/JavaScript arayüzü, şehir haritası ve notlar. Bu dal test sürümü adayıdır: `1.5-beta.2` (`versionCode 7`); yayın geçmişi ve açık doğrulama işleri için [DEVAM.md](DEVAM.md), öncelikli geliştirme işleri için [geliştirme planı](docs/gelistirme-plani-2026-11-18.md) okunmalıdır. `HANDOVER.md` eski bir devir belgesidir.
 
 ## Derleme
 
