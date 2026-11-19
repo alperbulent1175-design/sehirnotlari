@@ -550,6 +550,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
         <h2 class="bk-title" id="cloudTitle">☁️ Bulut Yedekleme</h2>
         <p class="bk-desc">Notlarınızın bir kopyasını Google hesabınıza bağlı, yalnız sizin erişebildiğiniz bir alanda saklar; son 5 tamamlanmış yedek tutulur. Oturum açmadan da uygulama ve notlarınız aynen çalışır.</p>
         <p class="bk-desc" id="cloudAccount"></p>
+        <p class="bk-desc" id="cloudRoomNotice" hidden>Room ana kaynak denemesinde yalnız elle yedekleme açık. Geri yüklemek için önce telefondaki kopyaya güvenli biçimde dönün.</p>
         <div class="ds-actions">
           <button type="button" class="bk-btn primary" id="cloudSignIn" hidden>Google ile oturum aç</button>
           <button type="button" class="bk-btn primary" id="cloudBackupNow" hidden>Şimdi yedekle</button>
@@ -2377,14 +2378,14 @@ function cloudRender(){
     const last=Math.max(s.lastBackupAt||0,...cloudBackups.map(b=>b.createdAt||0));
     acct.textContent=`Oturum açık: ${s.email||'Google hesabı'}${s.emulator?' (test emülatörü)':''}`+(last?` · Son yedek: ${CloudBackup.when(last)}`:'');
   }
-  show('cloudSignIn',ready&&!signed);show('cloudBackupNow',signed);show('cloudRefresh',signed);show('cloudSignOut',signed);show('cloudAutoRow',signed);
+  show('cloudSignIn',ready&&!signed);show('cloudBackupNow',signed);show('cloudRefresh',signed);show('cloudSignOut',signed);show('cloudAutoRow',signed&&!RF_MODE);show('cloudRoomNotice',RF_MODE);
   document.getElementById('cloudAuto').checked=!!s.auto;
   ['cloudSignIn','cloudBackupNow','cloudRefresh','cloudSignOut'].forEach(id=>{document.getElementById(id).disabled=busy;});
   const ul=document.getElementById('cloudList');ul.innerHTML='';
   if(signed)cloudBackups.forEach(b=>{
     const li=document.createElement('li'),t=document.createElement('span'),btn=document.createElement('button');
     t.textContent=CloudBackup.describe(b);
-    btn.type='button';btn.className='bk-btn secondary';btn.textContent='İncele ve geri yükle';btn.disabled=busy;
+    btn.type='button';btn.className='bk-btn secondary';btn.textContent='İncele ve geri yükle';btn.disabled=busy||RF_MODE;
     btn.setAttribute('aria-label',`${CloudBackup.describe(b)} yedeğini incele ve geri yükle`);
     btn.onclick=()=>cloudFetch(b.id);
     li.append(t,btn);ul.append(li);
@@ -2392,6 +2393,7 @@ function cloudRender(){
 }
 function cloudList(manual){cloudCall('list',{manual:!!manual},id=>window.Android.cloudListBackups(id));}
 function cloudFetch(backupId){
+  if(RF_MODE){cloudMsg('Geri yüklemek için önce telefondaki kopyaya güvenli biçimde dönün.','error');return;}
   cloudMsg('Yedek indiriliyor ve doğrulanıyor… Notlarınız onayınız olmadan değişmez.');
   cloudCall('fetch',{},id=>window.Android.cloudFetchBackup(backupId,id));
 }
