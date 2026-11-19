@@ -140,6 +140,9 @@ body.undo-on .map-fab{transform:translateY(-72px)}
 .sort-row::-webkit-scrollbar{display:none}
 .sort-btn{background:var(--surf);border:1px solid var(--brd);min-height:48px;padding:0 14px;border-radius:24px;font-size:13px;cursor:pointer;color:var(--txt2);font-family:inherit;white-space:nowrap;flex-shrink:0;transition:all .12s}
 .sort-btn.on{background:var(--txt);color:var(--surf);border-color:var(--txt)}
+.search-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0 12px}
+.search-filters label{font-size:12px;color:var(--txt2);font-weight:700}
+.search-filters select,.search-filters input{display:block;width:100%;min-height:42px;margin-top:4px;padding:7px 9px;border:1px solid var(--brd);border-radius:var(--rsm);background:var(--surf);color:var(--txt);font:inherit}
 .cc{width:100%;min-height:56px;text-align:left;font-family:inherit;color:inherit;background:var(--surf);border:1px solid var(--brd);border-left-width:4px;border-radius:var(--rsm);padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:all .12s}
 .cc:active{background:var(--surf2);transform:scale(.99)}
 .ccl{display:flex;align-items:center;gap:8px;min-width:0}
@@ -297,6 +300,8 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
 .ff input,.ff textarea{width:100%;min-height:48px;border:1.5px solid var(--brd);border-radius:var(--rsm);padding:9px 11px;font-size:16px;font-family:inherit;color:var(--txt);background:var(--surf);outline:none;transition:border-color .15s;-webkit-appearance:none}
 .ff input:focus,.ff textarea:focus{border-color:var(--acc)}
 .ff textarea{resize:vertical;min-height:80px;line-height:1.5}
+.note-hint{display:block;margin-top:4px;text-align:right;font-size:12px;color:var(--txt3)}
+.note-hint.near{color:#a64200;font-weight:700}
 .star-row{display:flex;flex-wrap:wrap;align-items:center;gap:0;margin-bottom:9px}
 .star{font-size:24px;cursor:pointer;opacity:.3;transition:opacity .1s,transform .1s;line-height:1;flex-shrink:0;min-width:48px;min-height:48px;padding:0;border:none;background:none;color:#c27c00;font-family:inherit;border-radius:10px}
 [data-theme=dark] .star{color:#f5b942}
@@ -511,6 +516,15 @@ body.undo-on .toast:not(.show){visibility:hidden}
   </div>
   <div class="tab-panel on" id="tab-notes">
     <div class="sch"><div class="sch-inner"><span class="sch-icon" aria-hidden="true">🔍</span><input id="schIn" placeholder="Şehir, not veya kategori ara…" type="search" aria-label="Notlu şehirlerde ara"></div></div>
+    <div class="search-filters" aria-label="Not filtreleri">
+      <label>Şehir<select id="searchCity"><option value="">Tüm şehirler</option></select></label>
+      <label>Etiket<select id="searchTag"><option value="">Tüm etiketler</option></select></label>
+      <label>Başlangıç tarihi<input id="searchFrom" type="date"></label>
+      <label>Bitiş tarihi<input id="searchTo" type="date"></label>
+      <label>En az yıldız<select id="searchStar"><option value="0">Tüm puanlar</option><option value="1">1 ★</option><option value="2">2 ★</option><option value="3">3 ★</option><option value="4">4 ★</option><option value="5">5 ★</option></select></label>
+      <button type="button" class="sort-btn" id="searchClear">Filtreleri temizle</button>
+    </div>
+    <p class="bk-desc">Etiket için not başlığına veya metnine #etiket yazın.</p>
     <div class="sum">
       <div class="sh2">Notlu Şehirler <span class="bdg" id="ab">0</span></div>
       <div class="sort-row" role="group" aria-label="Sıralama">
@@ -677,8 +691,8 @@ body.undo-on .toast:not(.show){visibility:hidden}
         <button type="button" class="cat" data-c="Kültür" aria-pressed="false"><span aria-hidden="true">🏛️</span> Kültür</button>
         <button type="button" class="cat" data-c="Genel" aria-pressed="false"><span aria-hidden="true">📝</span> Genel</button>
       </div>
-      <div class="ff"><label for="nt">Başlık</label><input id="nt" type="text" placeholder="Not başlığı…" maxlength="80"></div>
-      <div class="ff"><label for="nc">İçerik</label><textarea id="nc" placeholder="Not içeriği…" maxlength="2000"></textarea></div>
+      <div class="ff"><label for="nt">Başlık</label><input id="nt" type="text" placeholder="Not başlığı…" maxlength="80"><small class="note-hint" id="ntCount">0 / 80</small></div>
+      <div class="ff"><label for="nc">İçerik</label><textarea id="nc" placeholder="Not içeriği… #etiket ekleyebilirsiniz" maxlength="8000" style="min-height:130px"></textarea><small class="note-hint" id="ncCount">0 / 8000 karakter</small></div>
       <div class="star-row" id="newStars" role="group" aria-label="Puan">
         <button type="button" class="star" data-v="1" aria-label="1 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="2" aria-label="2 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="3" aria-label="3 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="4" aria-label="4 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="5" aria-label="5 yıldız" aria-pressed="false">★</button>
         <span id="starLabel">Puan ver</span>
@@ -730,8 +744,8 @@ body.undo-on .toast:not(.show){visibility:hidden}
 <div class="sub-ov" id="editOv">
   <div class="sub-box" role="dialog" aria-modal="true" aria-labelledby="editTitle">
     <h3 id="editTitle" tabindex="-1"><span aria-hidden="true">✏️</span> Notu Düzenle</h3>
-    <div class="ff"><label for="eTitle">Başlık</label><input id="eTitle" type="text" maxlength="80"></div>
-    <div class="ff"><label for="eContent">İçerik</label><textarea id="eContent" maxlength="2000" style="min-height:80px"></textarea></div>
+    <div class="ff"><label for="eTitle">Başlık</label><input id="eTitle" type="text" maxlength="80"><small class="note-hint" id="eTitleCount">0 / 80</small></div>
+    <div class="ff"><label for="eContent">İçerik</label><textarea id="eContent" maxlength="8000" style="min-height:130px"></textarea><small class="note-hint" id="eContentCount">0 / 8000 karakter</small></div>
     <div class="star-row" id="editStars" role="group" aria-label="Puan"><button type="button" class="star" data-v="1" aria-label="1 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="2" aria-label="2 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="3" aria-label="3 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="4" aria-label="4 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="5" aria-label="5 yıldız" aria-pressed="false">★</button></div>
     <div class="sub-row"><button class="ok" onclick="saveEdit()">Kaydet</button><button class="cancel" onclick="closeEdit()">İptal</button></div>
     <div class="edit-del-wrap"><button type="button" class="edit-del" id="eDelete" onclick="askDelete()"><span aria-hidden="true">🗑️</span> Notu sil</button></div>
@@ -845,6 +859,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
 <script src="note-delete.js"></script>
 <script src="city-pick.js"></script>
 <script src="notes-file.js"></script>
+<script src="note-search.js"></script>
 <script src="cloud-backup.js"></script>
 <script src="data-safety.js"></script>
 <script src="room-first.js"></script>
@@ -1322,8 +1337,11 @@ function wxHTML(w){if(!w)return'<div class="wx-err">📡 Hava verisi alınamadı
 // Modal
 const ov=document.getElementById('ov');
 let modalOpener=null;
+function updateNoteCount(inputId,countId){const field=document.getElementById(inputId),hint=document.getElementById(countId),max=Number(field.maxLength);hint.textContent=field.value.length+' / '+max+(max>80?' karakter':'');hint.classList.toggle('near',field.value.length>=max*0.9);}
+[['nt','ntCount'],['nc','ncCount'],['eTitle','eTitleCount'],['eContent','eContentCount']].forEach(([inputId,countId])=>{document.getElementById(inputId).addEventListener('input',()=>updateNoteCount(inputId,countId));});
 function resetAddForm(){
   document.getElementById('nt').value='';document.getElementById('nc').value='';
+  updateNoteCount('nt','ntCount');updateNoteCount('nc','ncCount');
   selStar=0;selColor='';
   setStars('newStars',0);
   document.getElementById('starLabel').textContent='Puan ver';
@@ -2132,7 +2150,7 @@ function renderFavs(){
     </div></div>`).join('');
 }
 let editOpener=null;
-function openEdit(city,id){const n=DB[city]?.find(n=>NoteIds.sameId(n.id,id));if(!n)return;editingCity=city;editingId=id;editOpener=document.activeElement;document.getElementById('eTitle').value=n.title;document.getElementById('eContent').value=n.content||'';setStars('editStars',n.star||0);document.getElementById('editOv').classList.add('open');document.getElementById('editTitle').focus();}
+function openEdit(city,id){const n=DB[city]?.find(n=>NoteIds.sameId(n.id,id));if(!n)return;editingCity=city;editingId=id;editOpener=document.activeElement;document.getElementById('eTitle').value=n.title;document.getElementById('eContent').value=n.content||'';updateNoteCount('eTitle','eTitleCount');updateNoteCount('eContent','eContentCount');setStars('editStars',n.star||0);document.getElementById('editOv').classList.add('open');document.getElementById('editTitle').focus();}
 function saveEdit(){const n=DB[editingCity]?.find(n=>NoteIds.sameId(n.id,editingId));if(!n)return;n.title=document.getElementById('eTitle').value.trim()||n.title;n.content=document.getElementById('eContent').value.trim();sv();mirrorNewNoteToRoom(editingCity,n);renderNotes();updateSum();closeEdit();toast('Not güncellendi ✓');}
 function closeEdit(){document.getElementById('editOv').classList.remove('open');editingCity=null;editingId=null;if(editOpener&&document.body.contains(editOpener))editOpener.focus({preventScroll:true});else if(document.getElementById('ov').classList.contains('open'))document.getElementById('mname').focus({preventScroll:true});editOpener=null;}
 document.getElementById('editOv').addEventListener('click',e=>{if(e.target===document.getElementById('editOv'))closeEdit();});
@@ -2150,8 +2168,8 @@ function shareNote(city, id) {
 function renderNotes(){
   const nl=document.getElementById('nl'),nb=document.getElementById('nb');
   renderCityMeta();
-  const ns=(curCity&&DB[curCity])||[];nb.textContent=ns.length;
-  if(!ns.length){nl.innerHTML='<div class="nemp">Henüz not yok.<br>“Not ekle” ile ilk notunu ekle.</div>';return;}
+  const all=(curCity&&DB[curCity])||[],ns=curCity?searchMatched(curCity):[];nb.textContent=ns.length;
+  if(!ns.length){nl.innerHTML=all.length?'<div class="nemp">Filtrelere uyan not yok.</div>':'<div class="nemp">Henüz not yok.<br>“Not ekle” ile ilk notunu ekle.</div>';return;}
   nl.innerHTML=[...ns].reverse().map(n=>`<div class="ni" style="border-left-color:${n.color||BOLGE_INFO[curBolge||'ic'].c};background:${n.color?n.color+'22':''}">
     <div class="nih"><div class="nit">${n.isAI ? '<span title="AI Özeti" style="margin-right:4px">✨</span>' : ''}${CEMOJI[n.category]||'📝'} ${esc(n.title)}${n.fav?' ⭐':''}${RF_MODE?rfBadge(curCity,n.id):''}</div><div class="nid">${n.date}</div></div>
     ${n.content?`<div class="nic">${esc(n.content)}</div>`:''}
@@ -2163,18 +2181,30 @@ function renderNotes(){
     </div></div>`).join('');
 }
 
-document.getElementById('schIn').oninput=e=>{q=e.target.value.toLowerCase().trim();updateSum();};
+document.getElementById('schIn').oninput=e=>{q=e.target.value.trim();updateSum();if(curCity)renderNotes();};
+function searchFilters(){return{query:q,city:document.getElementById('searchCity').value,tag:document.getElementById('searchTag').value,from:document.getElementById('searchFrom').value,to:document.getElementById('searchTo').value,minStar:Number(document.getElementById('searchStar').value)};}
+function searchMatched(city){const f=searchFilters();return(DB[city]||[]).filter(n=>NoteSearch.matches(city,n,f));}
+function refreshSearchOptions(){
+  const cityEl=document.getElementById('searchCity'),tagEl=document.getElementById('searchTag'),city=cityEl.value,tag=tagEl.value;
+  const cities=Object.keys(DB).filter(c=>Array.isArray(DB[c])&&DB[c].length).sort((a,b)=>a.localeCompare(b,'tr'));
+  const tags=[...new Set(cities.flatMap(c=>DB[c].flatMap(n=>NoteSearch.tags(n))))].sort((a,b)=>a.localeCompare(b,'tr'));
+  cityEl.replaceChildren(new Option('Tüm şehirler',''),...cities.map(c=>new Option(c,c)));
+  tagEl.replaceChildren(new Option('Tüm etiketler',''),...tags.map(t=>new Option('#'+t,t)));
+  cityEl.value=cities.includes(city)?city:'';tagEl.value=tags.includes(tag)?tag:'';
+}
+['searchCity','searchTag','searchFrom','searchTo','searchStar'].forEach(id=>document.getElementById(id).addEventListener('change',()=>{updateSum();if(curCity)renderNotes();}));
+document.getElementById('searchClear').onclick=()=>{document.getElementById('schIn').value='';q='';['searchCity','searchTag','searchFrom','searchTo'].forEach(id=>document.getElementById(id).value='');document.getElementById('searchStar').value='0';updateSum();if(curCity)renderNotes();};
 function updateSum(){
   const sl=document.getElementById('sl'),ab=document.getElementById('ab');
-  let cs=Object.keys(DB).filter(c=>DB[c]&&DB[c].length>0);
-  if(q)cs=cs.filter(c=>c.toLowerCase().includes(q)||DB[c].some(n=>(n.title||'').toLowerCase().includes(q)||(n.content||'').toLowerCase().includes(q)||(n.category||'').toLowerCase().includes(q)));
+  refreshSearchOptions();
+  const matched={};let cs=Object.keys(DB).filter(c=>{matched[c]=searchMatched(c);return matched[c].length>0;});
   if(sortMode==='alpha')cs.sort((a,b)=>a.localeCompare(b,'tr'));
-  else if(sortMode==='star')cs.sort((a,b)=>{const as=DB[a].reduce((s,n)=>s+(n.star||0),0)/DB[a].length,bs=DB[b].reduce((s,n)=>s+(n.star||0),0)/DB[b].length;return bs-as;});
-  else if(sortMode==='fav')cs=cs.filter(c=>DB[c].some(n=>n.fav)).sort((a,b)=>a.localeCompare(b,'tr'));
-  else cs.sort((a,b)=>DB[b].length-DB[a].length);
+  else if(sortMode==='star')cs.sort((a,b)=>{const as=matched[a].reduce((s,n)=>s+(n.star||0),0)/matched[a].length,bs=matched[b].reduce((s,n)=>s+(n.star||0),0)/matched[b].length;return bs-as;});
+  else if(sortMode==='fav')cs=cs.filter(c=>matched[c].some(n=>n.fav)).sort((a,b)=>a.localeCompare(b,'tr'));
+  else cs.sort((a,b)=>matched[b].length-matched[a].length);
   ab.textContent=cs.length;
-  if(!cs.length){sl.innerHTML=q?'<div class="emp">Eşleşen şehir yok.</div>':'<div class="emp"><span class="eico" aria-hidden="true">🗺️</span>Henüz notlu şehir yok.<br>Haritada bir şehre dokunun ya da “Not Ekle”yi kullanın.<br><button type="button" class="city-btn primary" style="margin-top:10px" onclick="openPicker(this)"><span aria-hidden="true">＋</span> Not Ekle</button></div>';return;}
-  sl.innerHTML=cs.map(c=>{const b=IL_BOLGE[c]||'ic',info=BOLGE_INFO[b]||BOLGE_INFO.ic;const avg=DB[c].length?(DB[c].reduce((a,n)=>a+(n.star||0),0)/DB[c].length).toFixed(1):null;return`<button type="button" class="cc" style="border-left-color:${info.c}" onclick="openModal('${esc(c)}','${b}')" aria-label="${esc(c+', '+info.l+', '+DB[c].length+' not'+(avg?', ortalama puan '+avg:''))}"><span class="ccl"><span><span class="cn">${esc(c)}${DB[c].some(n=>n.fav)?' ⭐':''}</span><span class="cr">${info.l}</span></span></span><span class="cct"><span class="cnum">${DB[c].length}</span><span class="clb">${avg?'★'+avg:'not'}</span></span></button>`;}).join('');
+  if(!cs.length){sl.innerHTML=Object.keys(DB).some(c=>DB[c]&&DB[c].length)?'<div class="emp">Filtrelere uyan not yok.</div>':'<div class="emp"><span class="eico" aria-hidden="true">🗺️</span>Henüz notlu şehir yok.<br>Haritada bir şehre dokunun ya da “Not Ekle”yi kullanın.<br><button type="button" class="city-btn primary" style="margin-top:10px" onclick="openPicker(this)"><span aria-hidden="true">＋</span> Not Ekle</button></div>';return;}
+  sl.innerHTML=cs.map(c=>{const b=IL_BOLGE[c]||'ic',info=BOLGE_INFO[b]||BOLGE_INFO.ic;const ns=matched[c],avg=ns.length?(ns.reduce((a,n)=>a+(n.star||0),0)/ns.length).toFixed(1):null;return`<button type="button" class="cc" style="border-left-color:${info.c}" onclick="openModal('${esc(c)}','${b}')" aria-label="${esc(c+', '+info.l+', '+ns.length+' not'+(avg?', ortalama puan '+avg:''))}"><span class="ccl"><span><span class="cn">${esc(c)}${ns.some(n=>n.fav)?' ⭐':''}</span><span class="cr">${info.l}</span></span></span><span class="cct"><span class="cnum">${ns.length}</span><span class="clb">${avg?'★'+avg:'not'}</span></span></button>`;}).join('');
 }
 
 function renderStats(){

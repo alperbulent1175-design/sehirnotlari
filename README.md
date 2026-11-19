@@ -11,6 +11,7 @@ Android uygulaması: Kotlin WebView kabuğu, yerel HTML/JavaScript arayüzü, ş
 - Geliştirme derlemesinde `local.properties` içindeki `GEMINI_API_KEY` geçici olarak kullanılabilir. Yayın derlemesine bu anahtar gömülmez. Ortak kullanıma açık, uygulama tarafından finanse edilen AI hizmeti için sunucu tarafı proxy ve kota denetimi gerekir.
 - PDF özetleri Gemini 3.8 Flash; sesli not, yalnız fotoğraf yorumu, fotoğraf ve ses analizi ile şehir rehberi Gemini 2.5 Flash kullanır. AI akışlarının gerçek anahtarla cihazda uçtan uca doğrulanması [AI doğrulama işinde](https://github.com/alperbulent1175-design/sehirnotlari/issues/7) izlenir.
 - PDF sınırı 30 MB'dır ve seçimden önce Ayarlar'da gösterilir. Küçük PDF'ler doğrudan gönderilir; 5 MB üzerindeki PDF'ler cihazda geçici dosyaya alınarak Gemini Files API'ye akış halinde yüklenir. Yükleme ilerlemesi gösterilir, uzaktaki geçici dosya işlem sonunda silinmeye çalışılır. Dosya boyutu, ücretsiz günlük istek sayısını belirlemez; proje kotası AI Studio'da görülür.
+- Not başlığı en fazla 80, içerik en fazla 8.000 karakterdir; iki alanda da sayaç vardır. Şehir, tarih aralığı, en az yıldız ve başlık/içerikteki `#etiket` ile notlar filtrelenebilir. Fotoğraf ve belge ekleri henüz notlara veya Firebase'e kaydedilmez; mevcut bulut yedeği notların JSON verisini saklar.
 - Firestore kural testleri: `cd firebase && npm ci && npm test` (Firebase emülatörleri gerekir).
 
 ## Veri
