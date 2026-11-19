@@ -383,6 +383,8 @@ body.undo-on .toast:not(.show){visibility:hidden}
 .loading-ov{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:5000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
 .loading-box{background:var(--surf);padding:24px;border-radius:var(--r);display:flex;flex-direction:column;align-items:center;gap:15px;box-shadow:0 8px 32px rgba(0,0,0,0.4);min-width:140px}
 .loading-box span{font-weight:700;color:var(--txt);font-size:14px}
+.pdf-progress{width:220px;height:7px;background:var(--brd);border-radius:999px;overflow:hidden}
+.pdf-progress>span{display:block;width:0;height:100%;background:var(--acc);transition:width .2s ease}
 
 /* In-app update: "Neler Yeni?" dialog. The WebView already applies the system font scale to px sizes. */
 .upd-ov{z-index:3400;padding:12px max(12px,var(--sb,0px))}
@@ -621,7 +623,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
       <button type="button" class="set-row" id="micBtn"><span class="set-ico" aria-hidden="true">🎤</span><span class="set-txt"><strong>Sesli not</strong><span>Konuşmanızı yapay zekâ ile metne çevirir</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
       <button type="button" class="set-row" id="photoBtn"><span class="set-ico" aria-hidden="true">🖼️</span><span class="set-txt"><strong>Fotoğrafı yorumla</strong><span>Fotoğraf çekip yapay zekâdan not taslağı alın</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
       <button type="button" class="set-row" id="multiBtn"><span class="set-ico" aria-hidden="true">📸</span><span class="set-txt"><strong>Akıllı analiz</strong><span>Fotoğraf ve sesinizden not oluşturur</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
-      <button type="button" class="set-row" id="pdfBtn"><span class="set-ico" aria-hidden="true">✨</span><span class="set-txt"><strong>PDF özeti</strong><span>Gemini 3.8 Flash ile PDF dosyasını özetleyip nota dönüştürür</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
+      <button type="button" class="set-row" id="pdfBtn"><span class="set-ico" aria-hidden="true">✨</span><span class="set-txt"><strong>PDF özeti</strong><span>Gemini 3.8 Flash ile özetler · PDF en fazla 30 MB</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
     </div>
     <h3 class="set-h">Uygulama</h3>
     <div class="set-list">
@@ -816,6 +818,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
   <div class="loading-box">
     <div class="spinner" style="width:36px;height:36px;border-width:4px"></div>
     <span id="loadingTxt">İşleniyor...</span>
+    <div class="pdf-progress" id="pdfProgress" hidden aria-label="PDF yükleme ilerlemesi"><span id="pdfProgressFill"></span></div>
   </div>
 </div>
 <div class="sub-ov upd-ov" id="updOv">
@@ -849,7 +852,17 @@ body.undo-on .toast:not(.show){visibility:hidden}
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 let _tt,rfToast=null;const toast=m=>{if(rfToast){m=rfToast;rfToast=null;}const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2500);};
 const showLoading=m=>{document.getElementById('loadingTxt').textContent=m||'İşleniyor...';document.getElementById('loadingOv').style.display='flex';};
-const hideLoading=()=>document.getElementById('loadingOv').style.display='none';
+const hideLoading=()=>{document.getElementById('loadingOv').style.display='none';document.getElementById('pdfProgress').hidden=true;};
+function onPdfUploadProgress(percent){
+  const n=Math.max(0,Math.min(100,Number(percent)||0));
+  document.getElementById('pdfProgress').hidden=false;
+  document.getElementById('pdfProgressFill').style.width=n+'%';
+  showLoading('PDF yükleniyor: %'+n);
+}
+function onPdfStage(stage){
+  document.getElementById('pdfProgress').hidden=true;
+  showLoading(stage==='processing'?'PDF inceleniyor...':'Özet hazırlanıyor...');
+}
 const CEMOJI={Gezi:'📍',Lezzet:'🍔',Kültür:'🏛️',Genel:'📝'};
 const BOLGE_COLORS={marmara:'#5B9BD5',ege:'#6BAE8C',akdeniz:'#E8904A',ic:'#9B7FBF',karadeniz:'#4F9E7C',dogu:'#D4675A',gun:'#C49A2E'};
 const BOLGE_DARK={marmara:'#2E7BC4',ege:'#3D8A66',akdeniz:'#C86820',ic:'#725598',karadeniz:'#2B7A5A',dogu:'#AA3A2F',gun:'#9A7010'};
@@ -1109,7 +1122,7 @@ document.getElementById('pdfBtn').onclick=()=>{
   if(aiOff())return;
   if(window.Android && window.Android.pickPDF){
     window.Android.pickPDF("");
-    toast('📄 PDF Seçiliyor...');
+    toast('📄 PDF seçin (en fazla 30 MB)');
   } else toast('Bu özellik Android uygulamada çalışır.');
 };
 document.getElementById('photoBtn').onclick=()=>{
@@ -1243,7 +1256,7 @@ function pickPDF() {
     if (aiOff()) return;
     if (window.Android && window.Android.pickPDF) {
         window.Android.pickPDF(curCity || "");
-        toast('📄 PDF Seçiliyor...');
+        toast('📄 PDF seçin (en fazla 30 MB)');
     } else {
         toast('Bu özellik şu an sadece Android uygulamada çalışır.');
     }

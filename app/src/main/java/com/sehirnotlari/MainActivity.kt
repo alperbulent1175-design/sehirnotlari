@@ -106,8 +106,9 @@ private const val AI_OFF_MESSAGE = "Yapay zekâ için Ayarlar'dan Gemini API ana
 private const val AI_OFF_GUIDE = "Akıllı rehber için Gemini anahtarı ekleyin."
 private const val AI_GUIDE_FAILED = "Rehber şu an hazırlanamadı. Daha sonra yeniden deneyin."
 private const val AI_MEDIA_LIMIT = 20_000_000
-private const val PDF_AI_MODEL = "gemini-3.8-flash"
 private const val GENERAL_AI_MODEL = "gemini-2.5-flash"
+private const val PDF_AI_MODEL = "gemini-3.8-flash"
+private const val PDF_INLINE_LIMIT = 5_000_000L
 
 private fun readLimitedAi(stream: InputStream): ByteArray {
     val output = ByteArrayOutputStream()
@@ -153,9 +154,10 @@ class MainActivity : AppCompatActivity() {
 
     private val aiKeyStore by lazy { AiApiKeyStore(applicationContext) }
     private val aiEnabled: Boolean get() = aiKeyStore.hasKey() || BuildConfig.GEMINI_API_KEY.isNotBlank()
+    private fun aiKey(): String = aiKeyStore.get() ?: BuildConfig.GEMINI_API_KEY.trim()
     private fun aiModel(modelName: String = GENERAL_AI_MODEL): GenerativeModel = GenerativeModel(
         modelName = modelName,
-        apiKey = aiKeyStore.get() ?: BuildConfig.GEMINI_API_KEY.trim(),
+        apiKey = aiKey(),
         requestOptions = RequestOptions(timeout = kotlin.time.Duration.parse("2m"))
     )
 
@@ -282,32 +284,54 @@ class MainActivity : AppCompatActivity() {
     private fun extractTextFromPdf(uri: Uri) {
         Log.d("SehirNotlari", "PDF Analysis started")
         val cityName = selectedCityForPdf.orEmpty()
-        webView.evaluateJavascript("showLoading('PDF işleniyor...')", null)
+        webView.evaluateJavascript("showLoading('PDF hazırlanıyor...')", null)
         lifecycleScope.launch(Dispatchers.IO) {
+            val staged = try { File.createTempFile("ai_pdf_", ".pdf", cacheDir) }
+            catch (e: Exception) {
+                Log.e("SehirNotlari", "PDF staging failed error=${e.javaClass.simpleName}")
+                withContext(Dispatchers.Main) { webView.evaluateJavascript("onAIError('PDF hazırlanamadı.')", null) }
+                return@launch
+            }
             try {
-                val bytes = contentResolver.openInputStream(uri)?.use(::readLimitedAi) ?: throw IOException("Dosya açılamadı")
-
-                val promptCityPart = if (cityName.isNotEmpty()) "ve '$cityName' şehri ile ilgili" else "ve ilgili şehir(ler) ile ilgili"
-
-                val inputContent = content {
-                    blob("application/pdf", bytes)
-                    text("""
-                        Sen dünya çapında tecrübeye sahip profesyonel bir gezi rehberi ve gurmesin. 
-                        Analiz et $promptCityPart vizyoner bir özet çıkar.
-                        
-                        Sadece kuru bir özet yapma; şu başlıkları kullanarak ilham verici bir içerik oluştur:
-                        - NEDEN GİTMELİSİN?: (Şehrin ruhunu ve en çekici yanını anlat)
-                        - MUTLAKA TADILMASI GEREKEN TEK ŞEY: (Oraya özgü, unutulmaz bir lezzet önerisi)
-                        - GİZLİ KALMIŞ BİR İPUCU: (Turistlerin pek bilmediği özel bir nokta veya pratik bir bilgi)
-                        
-                        Yanıtını YALNIZCA şu formatta ver, başka hiçbir şey yazma:
-                        BAŞLIK: [Şehir Adı ve Kısa Motto]
-                        İÇERİK: [Yukarıdaki maddeleri içeren şık ve öz metin]
-                    """.trimIndent())
+                if ((declaredSize(uri) ?: 0L) > PdfGeminiClient.PDF_LIMIT_BYTES) throw IOException("PDF too large")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    staged.outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var copied = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            copied += count
+                            if (copied > PdfGeminiClient.PDF_LIMIT_BYTES) throw IOException("PDF too large")
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                } ?: throw IOException("Dosya açılamadı")
+                val signature = ByteArray(5)
+                if (staged.length() < 5L || staged.inputStream().use { it.read(signature) } != 5 ||
+                    String(signature, Charsets.US_ASCII) != "%PDF-") {
+                    throw IOException("Invalid PDF")
                 }
-
-                val response = aiModel(PDF_AI_MODEL).generateContent(inputContent)
-                val summary = AiSummary.parse(response.text, "AI Özeti")
+                val promptCityPart = if (cityName.isNotEmpty()) "ve '$cityName' şehri ile ilgili" else "ve ilgili şehir(ler) ile ilgili"
+                val prompt = """
+                    PDF belgesini Türkçe, kısa ve doğru biçimde özetle $promptCityPart.
+                    Yalnız belgede bulunan bilgileri kullan. Belgede geçmeyen yer, yemek, tarih veya önerileri uydurma.
+                    Belge geziyle ilgiliyse önemli yerleri, lezzetleri ve pratik ipuçlarını ayrı kısa paragraflarla belirt.
+                    Bilgi belirsizse bunu açıkça söyle. Belge geziyle ilgili değilse ana konusunu özetle.
+                    Yanıt biçimi: BAŞLIK: [kısa başlık] İÇERİK: [özet].
+                """.trimIndent()
+                val response = if (staged.length() <= PDF_INLINE_LIMIT) {
+                    withContext(Dispatchers.Main) { webView.evaluateJavascript("onPdfStage('summarizing')", null) }
+                    aiModel(PDF_AI_MODEL).generateContent(content {
+                        blob("application/pdf", staged.readBytes())
+                        text(prompt)
+                    }).text
+                } else PdfGeminiClient(aiKey()).summarize(
+                    staged, prompt,
+                    onProgress = { percent -> runOnUiThread { webView.evaluateJavascript("onPdfUploadProgress($percent)", null) } },
+                    onStage = { stage -> runOnUiThread { webView.evaluateJavascript("onPdfStage(${JSONObject.quote(stage)})", null) } },
+                )
+                val summary = AiSummary.parse(response, "AI Özeti")
 
                 withContext(Dispatchers.Main) {
                     webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(summary.title)}, ${JSONObject.quote(summary.content)}, ${JSONObject.quote(cityName)})", null)
@@ -315,9 +339,16 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e("SehirNotlari", "PDF Analysis failed error=${e.javaClass.simpleName}")
                 withContext(Dispatchers.Main) {
-                    webView.evaluateJavascript("onAIError(${JSONObject.quote("PDF işlenemedi. Dosyayı ve bağlantınızı kontrol edin.")})", null)
+                    val message = if (e is IOException && (e.message == "PDF too large" || e.message == "Invalid PDF"))
+                        "PDF en fazla 30 MB olmalı ve geçerli bir PDF dosyası seçilmeli."
+                    else if (e is IOException && e.message == "Gemini request failed: HTTP 429")
+                        "Gemini kullanım sınırına ulaşıldı; AI Studio kotanızı kontrol edin."
+                    else if (e is IOException && e.message in listOf("Gemini request failed: HTTP 401", "Gemini request failed: HTTP 403"))
+                        "Gemini anahtarını ve erişim izinlerini kontrol edin."
+                    else "PDF işlenemedi. Dosyayı ve bağlantınızı kontrol edin."
+                    webView.evaluateJavascript("onAIError(${JSONObject.quote(message)})", null)
                 }
-            }
+            } finally { staged.delete() }
         }
     }
 
