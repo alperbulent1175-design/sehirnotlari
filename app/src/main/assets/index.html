@@ -1863,7 +1863,25 @@ window.onRoomFirstResult=function(requestId,result,error){
 async function rfStart(){
   rfStore=RoomFirst.createStore({
     send:(payload,id)=>window.Android.writeRoomFirst(payload,id),
-    storage:{get:k=>localStorage.getItem(k),set:(k,v)=>localStorage.setItem(k,v)},
+    storage:{
+      get:k=>{
+        const reply=JSON.parse(window.Android.readRoomFirstOutbox());
+        if(!reply.ok)throw new Error('Native outbox unreadable');
+        const legacy=localStorage.getItem(k),native=reply.body;
+        if(legacy&&legacy!=='[]'){
+          if(native&&native!=='[]'&&native!==legacy)throw new Error('Conflicting Room outboxes');
+          if(!native||native==='[]'){
+            if(!window.Android.writeRoomFirstOutbox(legacy))throw new Error('Outbox migration failed');
+          }
+          localStorage.removeItem(k);
+          return legacy;
+        }
+        return native;
+      },
+      set:(k,v)=>{
+        if(!window.Android.writeRoomFirstOutbox(v))throw new Error('Native outbox write failed');
+      }
+    },
     newId:()=>'rf-'+Date.now()+'-'+Math.random().toString(36).slice(2),
     sortValue:NoteIds.sortValue
   });

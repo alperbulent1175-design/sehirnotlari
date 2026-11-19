@@ -20,6 +20,7 @@ import com.sehirnotlari.data.PrefsRoomFirstFlagStore
 import com.sehirnotlari.data.ResolutionAction
 import com.sehirnotlari.data.RoomBridgeFailure
 import com.sehirnotlari.data.RoomFirstBackups
+import com.sehirnotlari.data.RoomFirstOutbox
 import com.sehirnotlari.data.RoomFirstSwitch
 import com.sehirnotlari.data.RoomFirstWrite
 import com.sehirnotlari.data.RoomFirstWriter
@@ -140,6 +141,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
     private val roomFirstWriter by lazy { RoomFirstWriter(notesDatabase, noteWriteSequencer, enabled = roomFirst::isOn) }
+    private val roomFirstOutbox by lazy { RoomFirstOutbox(File(filesDir, "room_first_outbox.json")) }
     private val cloud by lazy { CloudController.get(applicationContext) }
     private lateinit var releaseUpdater: GithubReleaseUpdater
     private var selectedCityForPdf: String? = null
@@ -1022,6 +1024,25 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(ROOM_LOG, "room-first mode failed error=${RoomBridgeErrors.safe(e)}")
             """{"available":false,"on":false,"backupId":null}"""
+        }
+
+        /** Returns null only when no native outbox exists; errors block Room-first startup. */
+        @JavascriptInterface
+        fun readRoomFirstOutbox(): String = try {
+            org.json.JSONObject().put("ok", true).put("body", roomFirstOutbox.read()).toString()
+        } catch (e: Exception) {
+            Log.e(ROOM_LOG, "room-first outbox read failed error=${RoomBridgeErrors.safe(e)}")
+            org.json.JSONObject().put("ok", false).toString()
+        }
+
+        /** AtomicFile.finishWrite syncs the intent before the Room request is sent. */
+        @JavascriptInterface
+        fun writeRoomFirstOutbox(body: String): Boolean = try {
+            roomFirstOutbox.write(body)
+            true
+        } catch (e: Exception) {
+            Log.e(ROOM_LOG, "room-first outbox write failed error=${RoomBridgeErrors.safe(e)}")
+            false
         }
 
         /** Room's committed notes for the Room-first page (debug prototype). */
