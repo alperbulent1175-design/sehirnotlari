@@ -550,7 +550,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
         <h2 class="bk-title" id="cloudTitle">☁️ Bulut Yedekleme</h2>
         <p class="bk-desc">Notlarınızın bir kopyasını Google hesabınıza bağlı, yalnız sizin erişebildiğiniz bir alanda saklar; son 5 tamamlanmış yedek tutulur. Oturum açmadan da uygulama ve notlarınız aynen çalışır.</p>
         <p class="bk-desc" id="cloudAccount"></p>
-        <p class="bk-desc" id="cloudRoomNotice" hidden>Room ana kaynak denemesinde yalnız elle yedekleme açık. Geri yüklemek için önce telefondaki kopyaya güvenli biçimde dönün.</p>
+        <p class="bk-desc" id="cloudRoomNotice" hidden>Room ana kaynak denemesinde otomatik yedekleme kapalı. Elle yedekleme ve önizlemeli geri yükleme kullanılabilir.</p>
         <div class="ds-actions">
           <button type="button" class="bk-btn primary" id="cloudSignIn" hidden>Google ile oturum aç</button>
           <button type="button" class="bk-btn primary" id="cloudBackupNow" hidden>Şimdi yedekle</button>
@@ -1580,7 +1580,7 @@ function dsCall(method,args){
     const bridge=window.Android;
     if(!bridge||typeof bridge[method]!=='function'){reject(new Error('Bridge unavailable'));return;}
     const id='ds-'+Date.now()+'-'+Math.random().toString(36).slice(2);
-    const timer=setTimeout(()=>{dsPending.delete(id);reject(new Error('Timed out'));},15000);
+    const timer=setTimeout(()=>{dsPending.delete(id);reject(new Error('Timed out'));},method==='importRoomFirst'?60000:15000);
     dsPending.set(id,{resolve,reject,timer});
     try{bridge[method](...args,id);}
     catch(e){clearTimeout(timer);dsPending.delete(id);reject(new Error('Bridge unavailable'));}
@@ -1823,6 +1823,7 @@ function mirrorNewNoteToRoom(city,note){
 let rfStore=null,rfFailed=false,rfDurability='',rfPreflight=null,rfBusy=false,rfStatusInfo=null;
 window.onRoomFirstSnapshot=dsSettle;
 window.onRoomFirstSwitch=dsSettle;
+window.onRoomFirstImport=dsSettle;
 const rfSig=n=>JSON.stringify([n.title||'',n.content||'',n.category||'Genel',n.star||0,n.color||'',!!n.fav,n.date||'',n.isAI===undefined||n.isAI===null?null:!!n.isAI]);
 function rfBadge(city,id){const s=rfStore&&rfStore.statusOf(city,id);return s?`<span class="rf-badge rf-${s.status}">${esc(s.text)}</span>`:'';}
 // Replaces the "saved" toast the calling handler shows right after sv().
@@ -2243,8 +2244,8 @@ function importJSON(inp){
 }
 function previewImport(text,name){
   settleDelete();
-  if(RF_MODE){
-    fileStatus('importStatus','⚠️ Room ana kaynak denemesinde içe aktarma kapalı. Önce telefondaki kopyaya güvenli biçimde dönün.','error');
+  if(RF_MODE&&(rfFailed||!rfStore||!rfStore.isReady()||rfStore.pendingCount())){
+    fileStatus('importStatus','⚠️ Bekleyen not kayıtları tamamlanınca içe aktarın.','error');
     return;
   }
   const p=NotesFile.parse(text);
@@ -2254,7 +2255,7 @@ function previewImport(text,name){
   document.getElementById('impConfirm').textContent='İçe aktar';
   document.getElementById('impText').textContent=`“${name||'Seçilen dosya'}”: ${p.cities} şehirde ${p.notes} not.`;
   document.getElementById('impDetail').textContent=pv.added
-    ?`${pv.added} yeni not eklenecek.${pv.skipped?` ${pv.skipped} not zaten kayıtlı olduğu için atlanacak.`:''} Mevcut ${NotesFile.count(DB)} notunuz silinmez ve değiştirilmez.`
+    ?`${RF_MODE?'En fazla ':''}${pv.added} yeni not eklenecek.${pv.skipped?` ${pv.skipped} not zaten kayıtlı olduğu için atlanacak.`:''} ${RF_MODE?'Room’da silinmiş notlar da atlanır. ':''}Mevcut ${NotesFile.count(DB)} notunuz silinmez ve değiştirilmez.`
     :'Bu dosyadaki notların hepsi zaten kayıtlı; eklenecek yeni not yok. Notlarınız değişmedi.';
   document.getElementById('impTitle').textContent=pv.added?'Yedek içe aktarılsın mı?':'Yedek kontrol edildi';
   document.getElementById('impConfirm').hidden=!pv.added;
@@ -2335,6 +2336,17 @@ document.getElementById('impRoomRetry').onclick=()=>{
 };
 function confirmImport(){
   const d=pendingImport;closeImport();if(!d)return;
+  if(RF_MODE){
+    if(rfFailed||!rfStore||!rfStore.isReady()||rfStore.pendingCount()){
+      fileStatus(impStatusId,'⚠️ Bekleyen not kayıtları tamamlanınca içe aktarın.','error');return;
+    }
+    fileStatus(impStatusId,'Notlar Room’a ekleniyor; işlem tamamlanana kadar bekleyin.');
+    dsCall('importRoomFirst',[JSON.stringify(d)]).then(out=>{
+      fileStatus(impStatusId,`✅ ${out.inserted} not eklendi; ${out.skipped} mevcut veya silinmiş not atlandı.`,'ok');
+      rfStart();
+    }).catch(e=>fileStatus(impStatusId,'⚠️ İçe aktarma sonucu doğrulanamadı; notları yeniden açıp kontrol edin.','error'));
+    return;
+  }
   const r=applyImport(d);
   // A Room warning raised during the import already says the notes were saved; it must stay visible.
   if(r.ok&&roomRestoreRetry)return;
@@ -2385,7 +2397,7 @@ function cloudRender(){
   if(signed)cloudBackups.forEach(b=>{
     const li=document.createElement('li'),t=document.createElement('span'),btn=document.createElement('button');
     t.textContent=CloudBackup.describe(b);
-    btn.type='button';btn.className='bk-btn secondary';btn.textContent='İncele ve geri yükle';btn.disabled=busy||RF_MODE;
+    btn.type='button';btn.className='bk-btn secondary';btn.textContent='İncele ve geri yükle';btn.disabled=busy;
     btn.setAttribute('aria-label',`${CloudBackup.describe(b)} yedeğini incele ve geri yükle`);
     btn.onclick=()=>cloudFetch(b.id);
     li.append(t,btn);ul.append(li);
@@ -2393,7 +2405,6 @@ function cloudRender(){
 }
 function cloudList(manual){cloudCall('list',{manual:!!manual},id=>window.Android.cloudListBackups(id));}
 function cloudFetch(backupId){
-  if(RF_MODE){cloudMsg('Geri yüklemek için önce telefondaki kopyaya güvenli biçimde dönün.','error');return;}
   cloudMsg('Yedek indiriliyor ve doğrulanıyor… Notlarınız onayınız olmadan değişmez.');
   cloudCall('fetch',{},id=>window.Android.cloudFetchBackup(backupId,id));
 }
@@ -2479,7 +2490,7 @@ function renderCloudRestore(){
   document.getElementById('impTitle').textContent=pv.added?'Bulut yedeği geri yüklensin mi?':'Bulut yedeği kontrol edildi';
   document.getElementById('impText').textContent=`${CloudBackup.when(c.meta.createdAt)} tarihli yedek: ${c.meta.cityCount} şehirde ${c.meta.noteCount} not. Yedeğin bütünlüğü doğrulandı.`;
   document.getElementById('impDetail').textContent=(pv.added
-    ?`${pv.added} yeni not eklenecek.${pv.skipped?` ${pv.skipped} not bu telefonda zaten olduğu için atlanacak; telefondaki hâli korunur.`:''} Mevcut ${NotesFile.count(DB)} notunuz silinmez ve değiştirilmez.`
+    ?`${RF_MODE?'En fazla ':''}${pv.added} yeni not eklenecek.${pv.skipped?` ${pv.skipped} not bu telefonda zaten olduğu için atlanacak; telefondaki hâli korunur.`:''} ${RF_MODE?'Room’da silinmiş notlar da atlanır. ':''}Mevcut ${NotesFile.count(DB)} notunuz silinmez ve değiştirilmez.`
     :'Eklenecek yeni not yok; yedekteki notlar telefonda zaten var veya bu telefonda silinmiş. Notlarınız değişmedi.')
     +(c.deleted?` Yedekteki ${c.deleted} silme kaydı bu telefondaki notları silmez.`:'');
   document.getElementById('impDeletedRow').hidden=!plan.held;

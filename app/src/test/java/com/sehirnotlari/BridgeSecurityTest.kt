@@ -20,7 +20,7 @@ class BridgeSecurityTest {
                 "aiAvailable", "applyRoomResolution", "beginRoomRestore", "cancelReminder", "cancelRoomRestore", "checkForUpdate", "clearAiApiKey",
                 "cloudBackup", "cloudFetchBackup", "cloudListBackups", "cloudSetAuto", "cloudSignIn", "cloudSignOut", "cloudStatus",
                 "deleteRoomNote", "dismissUpdate", "downloadUpdate",
-                "exportNotesFile", "getCityGuide", "getGMTPlus3Time", "inspectRoomNote", "installUpdate", "listReminders", "pickNotesFile", "pickPDF", "readRoomFirst", "readRoomFirstOutbox",
+                "exportNotesFile", "getCityGuide", "getGMTPlus3Time", "importRoomFirst", "inspectRoomNote", "installUpdate", "listReminders", "pickNotesFile", "pickPDF", "readRoomFirst", "readRoomFirstOutbox",
                 "reconcileRoomNotes", "requestDataSafetyStatus", "requestReminderPermission", "requestRoomNotes", "restoreRoomNotes", "resumeRoomImports", "retryUpdate", "roomFirstMode",
                 "roomFirstSwitch", "saveAiApiKey", "saveNotesToRoom", "scheduleReminder", "setAutoDownloadUpdates", "setPrereleaseUpdates",
                 "shareNote", "startMultiModalRecording",
@@ -36,6 +36,7 @@ class BridgeSecurityTest {
         val params = bridge.declaredMethods.associate { it.name to it.parameterTypes.map { p -> p.simpleName } }
         assertEquals(emptyList<String>(), params["readRoomFirstOutbox"])
         assertEquals(listOf("String"), params["writeRoomFirstOutbox"])
+        assertEquals(listOf("String", "String"), params["importRoomFirst"])
         val main = source("src/main/java/com/sehirnotlari/MainActivity.kt")
         assertTrue(main.contains("RoomFirstOutbox(File(filesDir, \"room_first_outbox.json\"))"))
     }
@@ -83,7 +84,7 @@ class BridgeSecurityTest {
         val main = source("src/main/java/com/sehirnotlari/MainActivity.kt")
         val fetch = main.substringAfter("fun cloudFetchBackup(backupId: String, requestId: String) {").substringBefore("@JavascriptInterface")
         listOf("restoreFromLocal", "recordRestore", "upsert(", "applyRestore", "softDelete").forEach { assertFalse(it, fetch.contains(it)) }
-        assertTrue(fetch.indexOf("refusedInRoomFirst(\"cloud restore\"") in 0 until fetch.indexOf("cloud.fetch(backupId)"))
+        assertTrue(fetch.contains("cloud.fetch(backupId)"))
     }
 
     @Test

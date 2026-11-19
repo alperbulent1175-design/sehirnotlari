@@ -1081,6 +1081,25 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        /** User-confirmed JSON or cloud restore; only missing Room ids are added atomically. */
+        @JavascriptInterface
+        fun importRoomFirst(json: String, requestId: String) {
+            if (requestId.isBlank() || requestId.length > 100) return
+            RoomNoteWriteSequencer.writeScope.launch {
+                try {
+                    if (JSONArray(roomFirstOutbox.read() ?: "[]").length() != 0) {
+                        throw RoomBridgeFailure("Bekleyen not kayıtları tamamlanınca yeniden deneyin.")
+                    }
+                    val outcome = roomFirstWriter.importMissing(json)
+                    val result = JSONObject().put("inserted", outcome.inserted).put("skipped", outcome.skipped)
+                    postRoomResult(RoomBridgeScripts.roomFirstResult(RoomBridgeScripts.ROOM_FIRST_IMPORT, requestId, result, null))
+                } catch (e: Exception) {
+                    Log.e(ROOM_LOG, "room-first import failed request=$requestId error=${RoomBridgeErrors.safe(e)}")
+                    postRoomResult(RoomBridgeScripts.roomFirstResult(RoomBridgeScripts.ROOM_FIRST_IMPORT, requestId, null, RoomBridgeErrors.safe(e)))
+                }
+            }
+        }
+
         /** PREFLIGHT / ENABLE / DISABLE / STATUS of the debug-only source switch; [json] is the page's localStorage notes. */
         @JavascriptInterface
         fun roomFirstSwitch(action: String, json: String, requestId: String) {
@@ -1445,10 +1464,6 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun cloudFetchBackup(backupId: String, requestId: String) {
             if (!CloudScripts.REQUEST_ID.matches(requestId)) return
-            if (refusedInRoomFirst("cloud restore", requestId)) {
-                postCloudResult(CloudScripts.result("fetch", requestId, null, CLOUD_ROOM_FIRST))
-                return
-            }
             cloudScope.launch {
                 runCloud("fetch", requestId) {
                     val restored = cloud.fetch(backupId)

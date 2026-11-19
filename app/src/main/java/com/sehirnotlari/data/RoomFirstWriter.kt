@@ -155,6 +155,19 @@ class RoomFirstWriter(
     /** Test hook, runs inside the transaction after the write and before COMMIT. */
     private val beforeCommit: suspend () -> Unit = {},
 ) {
+    /** Confirmed restore: one transaction, inserts only missing ids and never revives tombstones. */
+    suspend fun importMissing(json: String): LegacyRoomImporter.Outcome = sequencer.mutex.withLock {
+        if (!enabled()) throw RoomBridgeFailure("Room-first mode is off")
+        LegacyRoomImporter.oversizedPayloadMessage(json)?.let { throw RoomBridgeFailure(it) }
+        db.withTransaction {
+            LegacyRoomImporter.importOrThrow(
+                json,
+                RoomNoteImportStore(db.notes()),
+                stamp = sequencer::nextTicket,
+            )
+        }
+    }
+
     suspend fun write(write: RoomFirstWrite): RoomFirstResult = sequencer.mutex.withLock {
         if (!enabled()) throw RoomBridgeFailure("Room-first mode is off")
         db.withTransaction {

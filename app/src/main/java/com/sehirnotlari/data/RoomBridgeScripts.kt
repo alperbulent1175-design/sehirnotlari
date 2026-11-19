@@ -44,7 +44,8 @@ object RoomBridgeScripts {
     const val ROOM_FIRST_SNAPSHOT = "onRoomFirstSnapshot"
     const val ROOM_FIRST_RESULT = "onRoomFirstResult"
     const val ROOM_FIRST_SWITCH = "onRoomFirstSwitch"
-    private val roomFirstCallbacks = setOf(ROOM_FIRST_SNAPSHOT, ROOM_FIRST_RESULT, ROOM_FIRST_SWITCH)
+    const val ROOM_FIRST_IMPORT = "onRoomFirstImport"
+    private val roomFirstCallbacks = setOf(ROOM_FIRST_SNAPSHOT, ROOM_FIRST_RESULT, ROOM_FIRST_SWITCH, ROOM_FIRST_IMPORT)
 
     fun roomFirstResult(callback: String, requestId: String, result: JSONObject?, error: String?): String {
         require(callback in roomFirstCallbacks)
