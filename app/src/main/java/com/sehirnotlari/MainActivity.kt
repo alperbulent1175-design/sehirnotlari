@@ -265,12 +265,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun extractTextFromPdf(uri: Uri) {
         Log.d("SehirNotlari", "PDF Analysis started")
+        val cityName = selectedCityForPdf.orEmpty()
         webView.evaluateJavascript("showLoading('PDF işleniyor...')", null)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val bytes = contentResolver.openInputStream(uri)?.use(::readLimitedAi) ?: throw IOException("Dosya açılamadı")
 
-                val cityName = selectedCityForPdf ?: ""
                 val promptCityPart = if (cityName.isNotEmpty()) "ve '$cityName' şehri ile ilgili" else "ve ilgili şehir(ler) ile ilgili"
 
                 val inputContent = content {
@@ -291,17 +291,10 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val response = aiModel().generateContent(inputContent)
-                val aiResponse = response.text
-                if (aiResponse == null) {
-                    Log.e("SehirNotlari", "PDF Analysis: AI returned null text")
-                    throw Exception("AI yanıt vermedi")
-                }
-
-                val title = if (aiResponse.contains("BAŞLIK:")) aiResponse.substringAfter("BAŞLIK:").substringBefore("İÇERİK:").trim() else "AI Özeti"
-                val summary = if (aiResponse.contains("İÇERİK:")) aiResponse.substringAfter("İÇERİK:").trim() else aiResponse
+                val summary = AiSummary.parse(response.text, "AI Özeti")
 
                 withContext(Dispatchers.Main) {
-                    webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(title)}, ${JSONObject.quote(summary)})", null)
+                    webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(summary.title)}, ${JSONObject.quote(summary.content)}, ${JSONObject.quote(cityName)})", null)
                 }
             } catch (e: Exception) {
                 Log.e("SehirNotlari", "PDF Analysis failed error=${e.javaClass.simpleName}")
@@ -1064,15 +1057,15 @@ class MainActivity : AppCompatActivity() {
         fun getCityGuide(city: String) {
             val sharedPrefs = mContext.getSharedPreferences("city_guides_cache", Context.MODE_PRIVATE)
             val cachedGuide = sharedPrefs.getString(city, null)
-            if (cachedGuide != null) {
+            if (!cachedGuide.isNullOrBlank()) {
                 Log.d("SehirNotlari", "Loading guide for $city from SharedPreferences cache.")
                 runOnUiThread {
-                    webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote(cachedGuide)})", null)
+                    webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote(cachedGuide)}, ${JSONObject.quote(city)})", null)
                 }
                 return
             }
             if (!aiEnabled) {
-                runOnUiThread { webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote(AI_OFF_GUIDE)})", null) }
+                runOnUiThread { webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote(AI_OFF_GUIDE)}, ${JSONObject.quote(city)})", null) }
                 return
             }
 
@@ -1081,18 +1074,19 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val prompt = "Sen profesyonel bir seyahat rehberisin. '$city' şehri için 'Ne yenir?', 'Gezilecek yer' ve 1 cümlelik bilgi ver. Düz metin kullan. Çok kısa olsun."
                     val response = aiModel().generateContent(prompt)
-                    val responseText = response.text ?: "Bilgi yok"
+                    val responseText = response.text?.trim()?.takeIf { it.isNotEmpty() }?.take(3000)
+                        ?: throw IOException("Empty AI guide")
                     Log.d("SehirNotlari", "AI Guide Response length=${responseText.length}")
                     
                     sharedPrefs.edit().putString(city, responseText).apply()
                     
                     withContext(Dispatchers.Main) {
-                        webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote(responseText)})", null)
+                        webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote(responseText)}, ${JSONObject.quote(city)})", null)
                     }
                 } catch (e: Exception) {
                     Log.e("SehirNotlari", "Error in getCityGuide for city: $city, Exception: ${e.javaClass.simpleName}")
                     withContext(Dispatchers.Main) {
-                        webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote(AI_GUIDE_FAILED)})", null)
+                        webView.evaluateJavascript("onCityGuideReady(${JSONObject.quote(AI_GUIDE_FAILED)}, ${JSONObject.quote(city)})", null)
                     }
                 }
             }
@@ -1132,7 +1126,6 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun stopRecording(city: String) {
-            selectedCityForPdf = city
             try {
                 mediaRecorder?.stop()
                 mediaRecorder?.release()
@@ -1149,11 +1142,9 @@ class MainActivity : AppCompatActivity() {
                                 text("Ekteki 'audio_1.m4a' ses kaydını metne dönüştür. BAŞLIK: ... İÇERİK: ... formatında ver.")
                             }
                             val response = aiModel().generateContent(inputContent)
-                            val aiResponse = response.text ?: ""
-                            val title = if (aiResponse.contains("BAŞLIK:")) aiResponse.substringAfter("BAŞLIK:").substringBefore("İÇERİK:").trim() else "Sesli Not"
-                            val summary = if (aiResponse.contains("İÇERİK:")) aiResponse.substringAfter("İÇERİK:").trim() else aiResponse
+                            val summary = AiSummary.parse(response.text, "Sesli Not")
                             withContext(Dispatchers.Main) {
-                                webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(title)}, ${JSONObject.quote(summary)})", null)
+                                webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(summary.title)}, ${JSONObject.quote(summary.content)}, ${JSONObject.quote(city)})", null)
                             }
                         } catch (e: Exception) {
                             Log.e("SehirNotlari", "Voice AI failed error=${e.javaClass.simpleName}")
@@ -1169,7 +1160,6 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun stopMultiModalRecording(city: String) {
-            selectedCityForPdf = city
             try {
                 mediaRecorder?.stop()
                 mediaRecorder?.release()
@@ -1202,12 +1192,10 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         val response = aiModel().generateContent(inputContent)
-                        val aiResponse = response.text ?: ""
-                        val title = if (aiResponse.contains("BAŞLIK:")) aiResponse.substringAfter("BAŞLIK:").substringBefore("İÇERİK:").trim() else "Görsel Analiz"
-                        val summary = if (aiResponse.contains("İÇERİK:")) aiResponse.substringAfter("İÇERİK:").trim() else aiResponse
+                        val summary = AiSummary.parse(response.text, "Görsel Analiz")
 
                         withContext(Dispatchers.Main) {
-                            webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(title)}, ${JSONObject.quote(summary)})", null)
+                            webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(summary.title)}, ${JSONObject.quote(summary.content)}, ${JSONObject.quote(city)})", null)
                         }
                     } catch (e: Exception) {
                         Log.e("SehirNotlari", "Multimodal AI failed error=${e.javaClass.simpleName}")

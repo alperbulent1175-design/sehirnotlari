@@ -1244,14 +1244,16 @@ function pickPDF() {
 }
 
 let pendingAI = null;
-function onAISummaryReady(title, content) {
+function onAISummaryReady(title, content, city) {
     hideLoading();
     pendingAI = { title, content };
     document.getElementById('aiTitle').textContent = "✨ " + title;
     document.getElementById('aiContent').value = content;
 
     const sel = document.getElementById('aiCitySelect');
-    sel.innerHTML = Object.keys(CITY_COORDS).sort().map(c => `<option value="${c}" ${c === curCity ? 'selected' : ''}>${c}</option>`).join('');
+    const selected=CITY_COORDS[city]?city:'';
+    sel.innerHTML = (selected?'':'<option value="" selected disabled>Şehir seçin</option>')+
+      Object.keys(CITY_COORDS).sort().map(c => `<option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>`).join('');
 
     document.getElementById('aiOv').classList.add('open');
     toast('✨ AI Özeti Hazır!');
@@ -1355,7 +1357,8 @@ function openModal(city,bolge,opts){
   if(!(opts&&opts.add))document.getElementById('mname').focus({preventScroll:true});
 }
 
-function onCityGuideReady(content) {
+function onCityGuideReady(content, city) {
+    if(city!==curCity)return;
     document.getElementById('aiGuideContent').textContent = content;
 }
 
