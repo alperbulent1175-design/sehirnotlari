@@ -84,6 +84,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import java.io.InputStream
 import java.util.TimeZone
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.runBlocking
@@ -100,9 +101,22 @@ private const val CLOUD_ROOM_FIRST = "Room ana kaynak modunda bulut yedekleme ku
 private val cloudScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 private const val ROOM_FIRST_ON = "Room-first mode is on"
 private const val ROOM_FIRST_OFF = "Room-first mode is off"
-private const val AI_OFF_MESSAGE = "Yapay zekâ özellikleri bu sürümde kullanılamıyor."
-private const val AI_OFF_GUIDE = "<i>Akıllı rehber bu sürümde kullanılamıyor.</i>"
-private const val AI_GUIDE_FAILED = "<i>Rehber şu an hazırlanamadı. Daha sonra yeniden deneyin.</i>"
+private const val AI_OFF_MESSAGE = "Yapay zekâ için Ayarlar'dan Gemini API anahtarı ekleyin."
+private const val AI_OFF_GUIDE = "Akıllı rehber için Gemini anahtarı ekleyin."
+private const val AI_GUIDE_FAILED = "Rehber şu an hazırlanamadı. Daha sonra yeniden deneyin."
+private const val AI_MEDIA_LIMIT = 20_000_000
+
+private fun readLimitedAi(stream: InputStream): ByteArray {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    while (true) {
+        val count = stream.read(buffer)
+        if (count < 0) break
+        if (output.size() + count > AI_MEDIA_LIMIT) throw IOException("AI dosyası 20 MB sınırını aşıyor")
+        output.write(buffer, 0, count)
+    }
+    return output.toByteArray()
+}
 
 class MainActivity : AppCompatActivity() {
 
@@ -132,19 +146,12 @@ class MainActivity : AppCompatActivity() {
     private var photoFile: File? = null
     private var photoUri: Uri? = null
 
-    // Builds without GEMINI_API_KEY (public releases) must not call the API at all.
-    private val aiEnabled = BuildConfig.GEMINI_API_KEY.isNotBlank()
-
-    private val generativeModel = GenerativeModel(
+    private val aiKeyStore by lazy { AiApiKeyStore(applicationContext) }
+    private val aiEnabled: Boolean get() = aiKeyStore.hasKey() || BuildConfig.GEMINI_API_KEY.isNotBlank()
+    private fun aiModel(): GenerativeModel = GenerativeModel(
         modelName = "gemini-2.5-flash",
-        apiKey = BuildConfig.GEMINI_API_KEY.trim(),
-        requestOptions = RequestOptions(timeout = kotlin.time.Duration.parse("5m"))
-    )
-
-    private val guideModel = GenerativeModel(
-        modelName = "gemini-2.5-flash",
-        apiKey = BuildConfig.GEMINI_API_KEY.trim(),
-        requestOptions = RequestOptions(timeout = kotlin.time.Duration.parse("5m"))
+        apiKey = aiKeyStore.get() ?: BuildConfig.GEMINI_API_KEY.trim(),
+        requestOptions = RequestOptions(timeout = kotlin.time.Duration.parse("2m"))
     )
 
     private val locationPermissionLauncher = registerForActivityResult(
@@ -261,9 +268,7 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript("showLoading('PDF işleniyor...')", null)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val inputStream = contentResolver.openInputStream(uri) ?: throw Exception("Dosya açılamadı")
-                val bytes = inputStream.readBytes()
-                inputStream.close()
+                val bytes = contentResolver.openInputStream(uri)?.use(::readLimitedAi) ?: throw IOException("Dosya açılamadı")
 
                 val cityName = selectedCityForPdf ?: ""
                 val promptCityPart = if (cityName.isNotEmpty()) "ve '$cityName' şehri ile ilgili" else "ve ilgili şehir(ler) ile ilgili"
@@ -285,7 +290,7 @@ class MainActivity : AppCompatActivity() {
                     """.trimIndent())
                 }
 
-                val response = generativeModel.generateContent(inputContent)
+                val response = aiModel().generateContent(inputContent)
                 val aiResponse = response.text
                 if (aiResponse == null) {
                     Log.e("SehirNotlari", "PDF Analysis: AI returned null text")
@@ -301,9 +306,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e("SehirNotlari", "PDF Analysis failed error=${e.javaClass.simpleName}")
                 withContext(Dispatchers.Main) {
-                    val errorMsg = e.message ?: e.toString()
-                    webView.evaluateJavascript("hideLoading()", null)
-                    webView.evaluateJavascript("toast(${JSONObject.quote("PDF hatası: $errorMsg")})", null)
+                    webView.evaluateJavascript("onAIError(${JSONObject.quote("PDF işlenemedi. Dosyayı ve bağlantınızı kontrol edin.")})", null)
                 }
             }
         }
@@ -332,7 +335,13 @@ class MainActivity : AppCompatActivity() {
                 prepare()
                 start()
             }
-        } catch (e: Exception) { e.printStackTrace() }
+            runOnUiThread { webView.evaluateJavascript("onAIRecordingStarted()", null) }
+        } catch (e: Exception) {
+            mediaRecorder?.release()
+            mediaRecorder = null
+            Log.e("SehirNotlari", "Voice recording start failed error=${e.javaClass.simpleName}")
+            runOnUiThread { webView.evaluateJavascript("onAIError('Ses kaydı başlatılamadı.')", null) }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -1070,8 +1079,8 @@ class MainActivity : AppCompatActivity() {
             Log.d("SehirNotlari", "getCityGuide called for city: $city")
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    val prompt = "Sen profesyonel bir seyahat rehberisin. '$city' şehri için 'Ne yenir?', 'Gezilecek yer' ve 1 cümlelik bilgi ver. HTML (<b>, <br>) kullan. Çok kısa olsun."
-                    val response = guideModel.generateContent(prompt)
+                    val prompt = "Sen profesyonel bir seyahat rehberisin. '$city' şehri için 'Ne yenir?', 'Gezilecek yer' ve 1 cümlelik bilgi ver. Düz metin kullan. Çok kısa olsun."
+                    val response = aiModel().generateContent(prompt)
                     val responseText = response.text ?: "Bilgi yok"
                     Log.d("SehirNotlari", "AI Guide Response length=${responseText.length}")
                     
@@ -1091,6 +1100,12 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun aiAvailable(): Boolean = aiEnabled
+
+        @JavascriptInterface
+        fun saveAiApiKey(value: String): Boolean = aiKeyStore.save(value)
+
+        @JavascriptInterface
+        fun clearAiApiKey(): Boolean = aiKeyStore.clear()
 
         @JavascriptInterface
         fun startRecording() {
@@ -1126,22 +1141,30 @@ class MainActivity : AppCompatActivity() {
                 audioFile?.let { file ->
                     lifecycleScope.launch(Dispatchers.IO) {
                         try {
+                            val audioBytes = file.readBytes()
+                            if (audioBytes.isEmpty() || audioBytes.size > 20_000_000) throw IOException("Ses kaydı geçersiz veya çok büyük")
                             val inputContent = content {
                                 text("audio_1.m4a:")
-                                blob("audio/mpeg", file.readBytes())
+                                blob("audio/mp4", audioBytes)
                                 text("Ekteki 'audio_1.m4a' ses kaydını metne dönüştür. BAŞLIK: ... İÇERİK: ... formatında ver.")
                             }
-                            val response = generativeModel.generateContent(inputContent)
+                            val response = aiModel().generateContent(inputContent)
                             val aiResponse = response.text ?: ""
                             val title = if (aiResponse.contains("BAŞLIK:")) aiResponse.substringAfter("BAŞLIK:").substringBefore("İÇERİK:").trim() else "Sesli Not"
                             val summary = if (aiResponse.contains("İÇERİK:")) aiResponse.substringAfter("İÇERİK:").trim() else aiResponse
                             withContext(Dispatchers.Main) {
                                 webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(title)}, ${JSONObject.quote(summary)})", null)
                             }
-                        } catch (e: Exception) { e.printStackTrace() }
+                        } catch (e: Exception) {
+                            Log.e("SehirNotlari", "Voice AI failed error=${e.javaClass.simpleName}")
+                            withContext(Dispatchers.Main) { webView.evaluateJavascript("onAIError('Ses analizi başarısız. Bağlantınızı kontrol edip yeniden deneyin.')", null) }
+                        } finally { file.delete() }
                     }
-                }
-            } catch (e: Exception) { e.printStackTrace() }
+                } ?: throw IOException("Ses kaydı bulunamadı")
+            } catch (e: Exception) {
+                Log.e("SehirNotlari", "Voice recording failed error=${e.javaClass.simpleName}")
+                runOnUiThread { webView.evaluateJavascript("onAIError('Ses kaydı tamamlanamadı.')", null) }
+            }
         }
 
         @JavascriptInterface
@@ -1156,9 +1179,11 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val audioBytes = audioFile?.readBytes() ?: byteArrayOf()
                         val photoBytes = photoFile?.readBytes() ?: byteArrayOf()
+                        if (audioBytes.size > 20_000_000 || photoBytes.isEmpty() || photoBytes.size > 20_000_000) throw IOException("Medya geçersiz veya çok büyük")
 
                         // Fotoğrafı küçült (Hız için)
                         val fullBitmap = BitmapFactory.decodeByteArray(photoBytes, 0, photoBytes.size)
+                        if (fullBitmap == null || fullBitmap.width == 0) throw IOException("Fotoğraf açılamadı")
                         val scaledBitmap = Bitmap.createScaledBitmap(fullBitmap, 1024, 1024 * fullBitmap.height / fullBitmap.width, true)
                         val stream = ByteArrayOutputStream()
                         scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)
@@ -1168,7 +1193,7 @@ class MainActivity : AppCompatActivity() {
                             text("image_1.jpg:")
                             blob("image/jpeg", compressedPhotoBytes)
                             text("audio_1.m4a:")
-                            blob("audio/mpeg", audioBytes)
+                            blob("audio/mp4", audioBytes)
                             text("""
                                 Sen multimodal bir asistansın. Ekteki 'image_1.jpg' fotoğrafını incele ve 'audio_1.m4a' ses kaydındaki soruyu/isteği bu fotoğrafa göre yanıtla.
                                 Eğer sesli bir soru yoksa sadece fotoğrafı özetle. 
@@ -1176,7 +1201,7 @@ class MainActivity : AppCompatActivity() {
                             """.trimIndent())
                         }
 
-                        val response = generativeModel.generateContent(inputContent)
+                        val response = aiModel().generateContent(inputContent)
                         val aiResponse = response.text ?: ""
                         val title = if (aiResponse.contains("BAŞLIK:")) aiResponse.substringAfter("BAŞLIK:").substringBefore("İÇERİK:").trim() else "Görsel Analiz"
                         val summary = if (aiResponse.contains("İÇERİK:")) aiResponse.substringAfter("İÇERİK:").trim() else aiResponse
@@ -1184,9 +1209,15 @@ class MainActivity : AppCompatActivity() {
                         withContext(Dispatchers.Main) {
                             webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(title)}, ${JSONObject.quote(summary)})", null)
                         }
-                    } catch (e: Exception) { e.printStackTrace() }
+                    } catch (e: Exception) {
+                        Log.e("SehirNotlari", "Multimodal AI failed error=${e.javaClass.simpleName}")
+                        withContext(Dispatchers.Main) { webView.evaluateJavascript("onAIError('Fotoğraf ve ses analizi başarısız. Yeniden deneyin.')", null) }
+                    } finally { audioFile?.delete(); photoFile?.delete() }
                 }
-            } catch (e: Exception) { e.printStackTrace() }
+            } catch (e: Exception) {
+                Log.e("SehirNotlari", "Multimodal recording failed error=${e.javaClass.simpleName}")
+                runOnUiThread { webView.evaluateJavascript("onAIError('Ses kaydı tamamlanamadı.')", null) }
+            }
         }
 
         @JavascriptInterface

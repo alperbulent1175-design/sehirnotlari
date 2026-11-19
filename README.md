@@ -7,7 +7,8 @@ Android uygulaması: Kotlin WebView kabuğu, yerel HTML/JavaScript arayüzü, ş
 - JDK 21, Android SDK 37 ve Gradle wrapper gerekir.
 - `bash ./gradlew :app:assembleDebug :app:testDebugUnitTest`
 - Firebase yapılandırması yokken bulut yedeği devre dışı kalır. `app/google-services.json` yerel dosyadır ve depoya eklenmez.
-- Yapay zekâ özellikleri için `local.properties` içinde `GEMINI_API_KEY` gerekir. Anahtar bulunmazsa özellikler devre dışı kalır. Yayın APK'sına gömülü anahtarın çıkarılabileceği unutulmamalıdır; üretimde anahtar sunucu tarafında tutulmalıdır.
+- Yapay zekâ özellikleri için Android uygulamasında Ayarlar → Akıllı özellikler bölümüne kendi Gemini API anahtarınızı girin. Anahtar Android Keystore ile cihazda şifrelenir, yedeklere dahil edilmez ve uygulama içinden okunamaz; kaldırılabilir. PDF, ses, fotoğraf ve şehir rehberi istekleri Google Gemini hizmetine gönderilir. Kota ve ücretler anahtar sahibine aittir. Anahtar olmadan özellikler kapalıdır.
+- Geliştirme derlemesinde `local.properties` içindeki `GEMINI_API_KEY` geçici olarak kullanılabilir. Yayın derlemesine bu anahtar gömülmez. Ortak kullanıma açık, uygulama tarafından finanse edilen AI hizmeti için sunucu tarafı proxy ve kota denetimi gerekir.
 - Firestore kural testleri: `cd firebase && npm ci && npm test` (Firebase emülatörleri gerekir).
 
 ## Veri

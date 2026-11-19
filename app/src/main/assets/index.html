@@ -609,7 +609,14 @@ body.undo-on .toast:not(.show){visibility:hidden}
       <button type="button" class="set-row" id="remBtn"><span class="set-ico" aria-hidden="true">🔔</span><span class="set-txt"><strong>Hatırlatıcı kur</strong><span>Bir şehir için bildirim zamanı seçin</span></span></button>
     </div>
     <h3 class="set-h" id="aiTitle2">Akıllı özellikler</h3>
-    <p class="set-hint" id="aiOffNote" hidden>Bu sürümde kapalı. Notlarınız etkilenmez.</p>
+    <p class="set-hint" id="aiOffNote" hidden>Gemini API anahtarı ekleyerek açabilirsiniz. Notlarınız etkilenmez.</p>
+    <div id="aiKeySettings" class="ff" style="padding:12px 0">
+      <label for="aiKeyInput">Kendi Gemini API anahtarınız</label>
+      <input id="aiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="API anahtarı" style="width:100%;padding:9px;border-radius:var(--rsm);border:1.5px solid var(--brd);background:var(--surf);color:var(--txt)">
+      <p class="set-hint">Anahtar yalnız bu cihazda saklanır. Geçerliliği ilk istekte anlaşılır. AI isteklerinde seçtiğiniz PDF, ses veya fotoğraf Google Gemini hizmetine gönderilir. Kullanım kotası ve ücretler hesabınıza bağlıdır.</p>
+      <button type="button" class="ds-btn" id="aiKeySave">Anahtarı kaydet</button>
+      <button type="button" class="ds-btn" id="aiKeyClear">Anahtarı kaldır</button>
+    </div>
     <div class="set-list" role="group" aria-labelledby="aiTitle2">
       <button type="button" class="set-row" id="micBtn"><span class="set-ico" aria-hidden="true">🎤</span><span class="set-txt"><strong>Sesli not</strong><span>Konuşmanızı yapay zekâ ile metne çevirir</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
       <button type="button" class="set-row" id="multiBtn"><span class="set-ico" aria-hidden="true">📸</span><span class="set-txt"><strong>Akıllı analiz</strong><span>Fotoğraf ve sesinizden not oluşturur</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
@@ -1075,11 +1082,28 @@ document.getElementById('addFab').onclick=e=>openPicker(e.currentTarget);
 // Public builds ship without an AI key; their AI buttons explain that instead of failing later.
 function aiOff(){
   const off=!!(window.Android&&typeof window.Android.aiAvailable==='function'&&!window.Android.aiAvailable());
-  if(off)toast('Yapay zekâ özellikleri bu sürümde kullanılamıyor.');
+  if(off)toast('Yapay zekâ için Ayarlar’dan Gemini API anahtarı ekleyin.');
   return off;
 }
-const AI_ON=!(window.Android&&typeof window.Android.aiAvailable==='function'&&!window.Android.aiAvailable());
-if(!AI_ON){document.getElementById('aiOffNote').hidden=false;document.querySelectorAll('.ai-off-tag').forEach(t=>{t.hidden=false;});}
+let AI_ON=true;
+function refreshAiAvailability(){
+  AI_ON=!(window.Android&&typeof window.Android.aiAvailable==='function'&&!window.Android.aiAvailable());
+  document.getElementById('aiOffNote').hidden=AI_ON;
+  document.querySelectorAll('.ai-off-tag').forEach(t=>{t.hidden=AI_ON;});
+  document.getElementById('aiKeySettings').hidden=!(window.Android&&typeof window.Android.saveAiApiKey==='function');
+}
+refreshAiAvailability();
+document.getElementById('aiKeySave').onclick=()=>{
+  const input=document.getElementById('aiKeyInput');
+  if(!window.Android?.saveAiApiKey)return;
+  const saved=window.Android.saveAiApiKey(input.value);input.value='';
+  refreshAiAvailability();toast(saved?'Gemini anahtarı kaydedildi':'Anahtar kaydedilemedi; biçimini kontrol edin.');
+};
+document.getElementById('aiKeyClear').onclick=()=>{
+  if(!window.Android?.clearAiApiKey)return;
+  const cleared=window.Android.clearAiApiKey();document.getElementById('aiKeyInput').value='';
+  refreshAiAvailability();toast(cleared?'Gemini anahtarı kaldırıldı':'Anahtar kaldırılamadı.');
+};
 document.getElementById('pdfBtn').onclick=()=>{
   if(aiOff())return;
   if(window.Android && window.Android.pickPDF){
@@ -1121,11 +1145,14 @@ document.getElementById('micStartBtn').onclick=()=>{
         } else {
             window.Android.startRecording();
         }
-        document.getElementById('micStatus').textContent = "🔴 Dinleniyor...";
-        document.getElementById('micStartBtn').style.display = "none";
-        document.getElementById('micStopBtn').style.display = "block";
+        document.getElementById('micStatus').textContent = "İzin ve kayıt hazırlanıyor...";
     }
 };
+function onAIRecordingStarted(){
+  document.getElementById('micStatus').textContent='🔴 Dinleniyor...';
+  document.getElementById('micStartBtn').style.display='none';
+  document.getElementById('micStopBtn').style.display='block';
+}
 
 document.getElementById('micStopBtn').onclick=()=>{
     if(window.Android && window.Android.stopRecording){
@@ -1229,6 +1256,7 @@ function onAISummaryReady(title, content) {
     document.getElementById('aiOv').classList.add('open');
     toast('✨ AI Özeti Hazır!');
 }
+function onAIError(message){hideLoading();toast(message);}
 function closeAIOv(){ document.getElementById('aiOv').classList.remove('open'); pendingAI = null; }
 function confirmAI(){
   const city = document.getElementById('aiCitySelect').value;
@@ -1328,7 +1356,7 @@ function openModal(city,bolge,opts){
 }
 
 function onCityGuideReady(content) {
-    document.getElementById('aiGuideContent').innerHTML = content;
+    document.getElementById('aiGuideContent').textContent = content;
 }
 
 function closeModal(){
