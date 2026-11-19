@@ -2242,6 +2242,10 @@ function importJSON(inp){
 }
 function previewImport(text,name){
   settleDelete();
+  if(RF_MODE){
+    fileStatus('importStatus','⚠️ Room ana kaynak denemesinde içe aktarma kapalı. Önce telefondaki kopyaya güvenli biçimde dönün.','error');
+    return;
+  }
   const p=NotesFile.parse(text);
   if(!p.ok){fileStatus('importStatus','⚠️ '+p.error+' Notlarınız değişmedi.','error');toast('⚠️ '+p.error);return;}
   const pv=NotesFile.preview(DB,p.data);
@@ -2266,6 +2270,7 @@ function closeImport(){
 // Same merge as before (NoteIds.mergeNotes); Room changes only after the new notes are saved.
 // On Android the notes are staged on disk first: a successful setItem is not yet on disk.
 function applyImport(d){
+  if(RF_MODE)return{ok:false,error:'Room ana kaynak denemesinde içe aktarma kapalı.'};
   settleDelete();
   const before=JSON.stringify(storedDB()),added=[];
   const cnt=NoteIds.mergeNotes(DB,d,(city,note)=>added.push([city,note]));
