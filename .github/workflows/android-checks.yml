@@ -21,7 +21,7 @@ jobs:
           packages: platform-tools
       - run: sdkmanager --channel=3 'platforms;android-37.0'
       - uses: gradle/actions/setup-gradle@v4
-      - run: bash ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest --no-daemon
+      - run: bash ./gradlew :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:testDebugUnitTest --no-daemon
 
   firestore-rules:
     runs-on: ubuntu-latest
