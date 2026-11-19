@@ -105,6 +105,8 @@ private const val AI_OFF_MESSAGE = "Yapay zekâ için Ayarlar'dan Gemini API ana
 private const val AI_OFF_GUIDE = "Akıllı rehber için Gemini anahtarı ekleyin."
 private const val AI_GUIDE_FAILED = "Rehber şu an hazırlanamadı. Daha sonra yeniden deneyin."
 private const val AI_MEDIA_LIMIT = 20_000_000
+private const val PDF_AI_MODEL = "gemini-3.8-flash"
+private const val GENERAL_AI_MODEL = "gemini-2.5-flash"
 
 private fun readLimitedAi(stream: InputStream): ByteArray {
     val output = ByteArrayOutputStream()
@@ -148,8 +150,8 @@ class MainActivity : AppCompatActivity() {
 
     private val aiKeyStore by lazy { AiApiKeyStore(applicationContext) }
     private val aiEnabled: Boolean get() = aiKeyStore.hasKey() || BuildConfig.GEMINI_API_KEY.isNotBlank()
-    private fun aiModel(): GenerativeModel = GenerativeModel(
-        modelName = "gemini-2.5-flash",
+    private fun aiModel(modelName: String = GENERAL_AI_MODEL): GenerativeModel = GenerativeModel(
+        modelName = modelName,
         apiKey = aiKeyStore.get() ?: BuildConfig.GEMINI_API_KEY.trim(),
         requestOptions = RequestOptions(timeout = kotlin.time.Duration.parse("2m"))
     )
@@ -290,7 +292,7 @@ class MainActivity : AppCompatActivity() {
                     """.trimIndent())
                 }
 
-                val response = aiModel().generateContent(inputContent)
+                val response = aiModel(PDF_AI_MODEL).generateContent(inputContent)
                 val summary = AiSummary.parse(response.text, "AI Özeti")
 
                 withContext(Dispatchers.Main) {
