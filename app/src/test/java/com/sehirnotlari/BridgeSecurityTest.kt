@@ -17,18 +17,27 @@ class BridgeSecurityTest {
         val exposed = bridge.declaredMethods.filter { it.isAnnotationPresent(JavascriptInterface::class.java) }.map { it.name }.sorted()
         assertEquals(
             listOf(
-                "aiAvailable", "applyRoomResolution", "beginRoomRestore", "cancelReminder", "cancelRoomRestore", "checkForUpdate",
+                "aiAvailable", "applyRoomResolution", "beginRoomRestore", "cancelReminder", "cancelRoomRestore", "checkForUpdate", "clearAiApiKey",
                 "cloudBackup", "cloudFetchBackup", "cloudListBackups", "cloudSetAuto", "cloudSignIn", "cloudSignOut", "cloudStatus",
                 "deleteRoomNote", "dismissUpdate", "downloadUpdate",
                 "exportNotesFile", "getCityGuide", "getGMTPlus3Time", "inspectRoomNote", "installUpdate", "listReminders", "pickNotesFile", "pickPDF", "readRoomFirst",
                 "reconcileRoomNotes", "requestDataSafetyStatus", "requestReminderPermission", "requestRoomNotes", "restoreRoomNotes", "resumeRoomImports", "retryUpdate", "roomFirstMode",
-                "roomFirstSwitch", "saveNotesToRoom", "scheduleReminder", "setAutoDownloadUpdates", "setPrereleaseUpdates",
+                "roomFirstSwitch", "saveAiApiKey", "saveNotesToRoom", "scheduleReminder", "setAutoDownloadUpdates", "setPrereleaseUpdates",
                 "shareNote", "startMultiModalRecording",
                 "startRecording", "stopMultiModalRecording", "stopRecording", "undoRoomResolution", "updaterSettings", "upsertRoomNote",
                 "writeRoomFirst",
             ),
             exposed
         )
+    }
+
+    @Test
+    fun aiKeyBridgeNeverExposesTheStoredKeyToJavascript() {
+        val params = bridge.declaredMethods.associate { it.name to it.parameterTypes.map { p -> p.simpleName } }
+        assertEquals(listOf("String"), params["saveAiApiKey"])
+        assertEquals(emptyList<String>(), params["clearAiApiKey"])
+        assertEquals(emptyList<String>(), params["aiAvailable"])
+        assertFalse(bridge.declaredMethods.any { it.isAnnotationPresent(JavascriptInterface::class.java) && it.name.contains("getAi", ignoreCase = true) })
     }
 
     @Test

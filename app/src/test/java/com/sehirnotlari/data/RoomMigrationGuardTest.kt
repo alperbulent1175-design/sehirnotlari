@@ -246,7 +246,10 @@ class RoomMigrationGuardTest {
     @Test
     fun aiFeaturesAreOffWithoutAKeyAndNeverShowRawErrors() {
         val activity = sourceFile("src/main/java/com/sehirnotlari/MainActivity.kt").readText()
-        assertTrue(activity.contains("private val aiEnabled = BuildConfig.GEMINI_API_KEY.isNotBlank()"))
+        assertTrue(activity.contains("private val aiEnabled: Boolean get() = aiKeyStore.hasKey() || BuildConfig.GEMINI_API_KEY.isNotBlank()"))
+        val gradle = sourceFile("build.gradle.kts").readText()
+        assertTrue(gradle.substringAfter("defaultConfig {").substringBefore("buildTypes {").contains("buildConfigField(\"String\", \"GEMINI_API_KEY\", \"\\\"\\\"\")"))
+        assertTrue(gradle.substringAfter("debug {").substringBefore("release {").contains("buildConfigField(\"String\", \"GEMINI_API_KEY\", \"\\\"\$geminiApiKey\\\"\")"))
         assertTrue(activity.contains("fun aiAvailable(): Boolean = aiEnabled"))
         listOf("fun startRecording()", "fun startMultiModalRecording()", "fun pickPDF(city: String)").forEach { name ->
             val body = activity.substringAfter(name).substringBefore("@JavascriptInterface")
