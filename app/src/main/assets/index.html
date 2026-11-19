@@ -1821,6 +1821,7 @@ function mirrorNewNoteToRoom(city,note){
 // sv() turns the page's in-place edits into one Room request per changed note, and a note is
 // shown as saved only after native reports the committed transaction. Console: codes and counts only.
 let rfStore=null,rfFailed=false,rfDurability='',rfPreflight=null,rfBusy=false,rfStatusInfo=null;
+let rfImportBusy=false;
 window.onRoomFirstSnapshot=dsSettle;
 window.onRoomFirstSwitch=dsSettle;
 window.onRoomFirstImport=dsSettle;
@@ -2244,7 +2245,7 @@ function importJSON(inp){
 }
 function previewImport(text,name){
   settleDelete();
-  if(RF_MODE&&(rfFailed||!rfStore||!rfStore.isReady()||rfStore.pendingCount())){
+  if(RF_MODE&&(rfImportBusy||rfFailed||!rfStore||!rfStore.isReady()||rfStore.pendingCount())){
     fileStatus('importStatus','⚠️ Bekleyen not kayıtları tamamlanınca içe aktarın.','error');
     return;
   }
@@ -2337,14 +2338,17 @@ document.getElementById('impRoomRetry').onclick=()=>{
 function confirmImport(){
   const d=pendingImport;closeImport();if(!d)return;
   if(RF_MODE){
-    if(rfFailed||!rfStore||!rfStore.isReady()||rfStore.pendingCount()){
+    const statusId=impStatusId;
+    if(rfImportBusy||rfFailed||!rfStore||!rfStore.isReady()||rfStore.pendingCount()){
       fileStatus(impStatusId,'⚠️ Bekleyen not kayıtları tamamlanınca içe aktarın.','error');return;
     }
-    fileStatus(impStatusId,'Notlar Room’a ekleniyor; işlem tamamlanana kadar bekleyin.');
+    rfImportBusy=true;
+    fileStatus(statusId,'Notlar Room’a ekleniyor; işlem tamamlanana kadar bekleyin.');
     dsCall('importRoomFirst',[JSON.stringify(d)]).then(out=>{
-      fileStatus(impStatusId,`✅ ${out.inserted} not eklendi; ${out.skipped} mevcut veya silinmiş not atlandı.`,'ok');
+      fileStatus(statusId,`✅ ${out.inserted} not eklendi; ${out.skipped} mevcut veya silinmiş not atlandı.`,'ok');
       rfStart();
-    }).catch(e=>fileStatus(impStatusId,'⚠️ İçe aktarma sonucu doğrulanamadı; notları yeniden açıp kontrol edin.','error'));
+    }).catch(e=>fileStatus(statusId,'⚠️ İçe aktarma sonucu doğrulanamadı; notları yeniden açıp kontrol edin.','error'))
+      .finally(()=>{rfImportBusy=false;});
     return;
   }
   const r=applyImport(d);
