@@ -954,7 +954,7 @@ async function loadMap(){
   document.getElementById('mapLoading').style.display='flex';
   try{await loadLeaflet();}catch{mapFailed();return;}
   if(lmap){await loadProvinces();return;}
-  lmap=L.map('map',{center:[39.0,35.5],zoom:6,zoomControl:false,keyboard:false,minZoom:5,maxZoom:12,maxBounds:[[34.0,23.5],[43.5,46.5]],maxBoundsViscosity:1.0});
+  lmap=L.map('map',{center:[39.0,35.5],zoom:6,zoomControl:false,keyboard:false,zoomSnap:0.25,minZoom:4,maxZoom:12,maxBounds:[[34.0,23.5],[43.5,46.5]],maxBoundsViscosity:1.0});
   const addTile=()=>{
     if(lmap._tile)lmap.removeLayer(lmap._tile);
     // CARTO free basemaps now return blank/API-key stubs; use keyless providers.
