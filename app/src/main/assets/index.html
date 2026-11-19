@@ -2396,7 +2396,12 @@ function cloudFetch(backupId){
   cloudCall('fetch',{},id=>window.Android.cloudFetchBackup(backupId,id));
 }
 // Stored text, as for the JSON file: exactly what is on the phone, never a half-edited copy.
-function cloudBackupStart(auto){cloudCall('backup',{auto},id=>window.Android.cloudBackup(localStorage.getItem(NKEY)||'{}',auto,id));}
+function cloudBackupStart(auto){
+  if(RF_MODE&&(rfFailed||!rfStore||!rfStore.isReady()||rfStore.pendingCount())){
+    cloudMsg('Bekleyen not kayıtları tamamlanınca yedekleyin.','error');return;
+  }
+  cloudCall('backup',{auto},id=>window.Android.cloudBackup(RF_MODE?'{}':localStorage.getItem(NKEY)||'{}',auto,id));
+}
 window.cloudAutoBackup=function(){
   if(!cloudOn()||RF_MODE||cloudPending.size)return;
   cloudRefreshState();

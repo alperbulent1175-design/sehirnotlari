@@ -1411,16 +1411,21 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun cloudBackup(notesJson: String, auto: Boolean, requestId: String) {
             if (!CloudScripts.REQUEST_ID.matches(requestId)) return
-            LegacyRoomImporter.oversizedPayloadMessage(notesJson)?.let {
-                postCloudResult(CloudScripts.result("backup", requestId, null, "Notlar bulut yedeği için çok büyük; JSON dosyasına yedekleyin."))
-                return
-            }
-            if (refusedInRoomFirst("cloud backup", requestId)) {
-                postCloudResult(CloudScripts.result("backup", requestId, null, CLOUD_ROOM_FIRST))
-                return
-            }
             cloudScope.launch {
-                runCloud("backup", requestId) { cloud.backup(notesJson, roomDeletionRecords(), BuildConfig.VERSION_NAME, auto) }
+                runCloud("backup", requestId) {
+                    val source = if (roomFirst.isOn()) {
+                        val before = roomFirstOutbox.read() ?: "[]"
+                        if (JSONArray(before).length() != 0) throw CloudBackupException("Bekleyen not kayıtları tamamlanınca yeniden yedekleyin.")
+                        val snapshot = roomFirstWriter.snapshot()
+                        val after = roomFirstOutbox.read() ?: "[]"
+                        if (JSONArray(after).length() != 0) throw CloudBackupException("Bekleyen not kayıtları tamamlanınca yeniden yedekleyin.")
+                        snapshot.legacyNotesJson()
+                    } else notesJson
+                    LegacyRoomImporter.oversizedPayloadMessage(source)?.let {
+                        throw CloudBackupException("Notlar bulut yedeği için çok büyük; JSON dosyasına yedekleyin.")
+                    }
+                    cloud.backup(source, roomDeletionRecords(), BuildConfig.VERSION_NAME, auto)
+                }
             }
         }
 

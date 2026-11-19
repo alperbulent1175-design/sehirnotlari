@@ -104,6 +104,24 @@ data class RoomFirstSnapshot(
 ) {
     val active: List<NoteEntity> get() = rows.filter { it.deletedAt == null }
 
+    /** Cloud v1's legacy note shape, without Room-only tickets or tombstone metadata. */
+    fun legacyNotesJson(): String = JSONObject().apply {
+        active.forEach { row ->
+            val note = JSONObject().apply {
+                put("id", RoomNoteKeys.webViewId(row))
+                put("title", row.title)
+                put("content", row.content)
+                put("category", row.category)
+                put("star", row.star)
+                put("color", row.color)
+                put("fav", row.favorite)
+                put("date", row.dateLabel)
+                row.isAI?.let { put("isAI", it) }
+            }
+            (optJSONArray(row.city) ?: JSONArray().also { put(row.city, it) }).put(note)
+        }
+    }.toString()
+
     fun logLine() = "active=${active.size} tombstones=${rows.size - active.size} journalMode=$journalMode synchronous=$synchronous"
 
     fun toJson(): JSONObject = JSONObject().apply {

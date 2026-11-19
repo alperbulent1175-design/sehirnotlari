@@ -12,7 +12,7 @@
 
 ## Üretim kararları
 
-1. **Kaynak ve kayıt onayı:** Room commit'i tek başarı ölçütü olmalı. UI, yanıt gelmeden düzenlemeyi kaydedilmiş göstermemeli. Prototipte bekleyen düzenlemeler native outbox'a alınır; üretim öncesinde güç kesintisi ve eski kuyruktan geçiş cihazda doğrulanmalıdır.
+1. **Kaynak ve kayıt onayı:** Room commit'i tek başarı ölçütü olmalı. UI, yanıt gelmeden düzenlemeyi kaydedilmiş göstermemeli. Prototipte bekleyen düzenlemeler native outbox'a alınır; üretim öncesinde güç kesintisi ve eski kuyruktan geçiş cihazda doğrulanmalıdır. Room kaynaklı bulut yedeği yalnız kuyruk boşken commit edilmiş snapshot'tan oluşturulur; Room'a güvenli geri yükleme henüz kapalıdır.
 2. **Yedek uyumu:** Room snapshot'ından mevcut cloud v1 biçimine kayıpsız `tur_v10` dönüşümü yazılmalı. Bulut yedeği sadece Room'un doğrulanmış commit durumundan alınmalı. Geri yükleme, onaydan sonra Room'a tek işlem veya tekrar denenebilir stage ile yazılmalı; tombstone açık onay olmadan diriltilmemeli.
 3. **Dayanıklılık:** Mevcut cihaz raporunda `WAL / synchronous=NORMAL` kullanılmıştır. Son onaylanmış commit'in güç kesintisinde korunması şartsa üretimde `FULL` seçilmeli; cihazdaki gecikme ölçümüyle karar doğrulanmalı. Uygulama çökmesi ve güç kesintisi ayrı test edilmelidir.
 4. **Eski sürüme dönüş:** Room ana kaynak olduktan sonra eski APK yalnız `localStorage` okur. Geri dönüşte Room snapshot'ı tam ve doğrulanmış biçimde `tur_v10` içine yazılmadan eski sürüm kurulursa son notlar görünmez. Geri dönüş işlemi ayrı, kullanıcıya görünür bir işlem olmalı.

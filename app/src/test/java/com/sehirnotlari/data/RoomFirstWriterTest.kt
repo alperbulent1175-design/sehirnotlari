@@ -64,6 +64,22 @@ class RoomFirstWriterTest {
         JSONObject().put("op", "DELETE").put("city", city).put("base", base).put("id", id).toString()
 
     @Test
+    fun cloudSnapshotContainsOnlyCommittedActiveNotesInLegacyShape() = runBlocking {
+        val process = Process(now = 1_000L)
+        process.write(upsert("Bursa", 7, 0, "Ulu Cami"))
+        val deleted = process.write(upsert("İzmir", "old-note", 0, "Eski"))
+        process.write(delete("İzmir", "old-note", deleted.ticket!!))
+        val json = JSONObject(process.writer.snapshot().legacyNotesJson())
+        assertEquals(1, json.getJSONArray("Bursa").length())
+        assertFalse(json.has("İzmir"))
+        val note = json.getJSONArray("Bursa").getJSONObject(0)
+        assertEquals("Ulu Cami", note.getString("title"))
+        assertEquals(false, note.getBoolean("isAI"))
+        assertFalse(note.has("ticket"))
+        assertFalse(note.has("deleted"))
+    }
+
+    @Test
     fun confirmedCreateEditFavoriteAndDeleteAreReadBackAfterRestart() = runBlocking {
         val first = Process(now = 1_000L)
         val created = first.write(upsert("Bursa", 1_762_380_000_000_123L, 0, "Ulu Cami"))
