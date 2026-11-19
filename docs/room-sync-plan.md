@@ -1,34 +1,45 @@
-# Room + isteğe bağlı hesap / cihazlar arası senkronizasyon
+# Cihazlar arası eşitleme tasarımı
 
-> Tarihsel taslak: Aşağıdaki “mevcut durum” artık güncel değildir. Güncel Room üretim kapıları için [room-production-readiness.md](room-production-readiness.md), yayın geçmişi için `DEVAM.md` okunmalıdır.
+Bu belge eşitleme için veri sözleşmesi ve doğrulama planıdır. Mevcut Firebase özelliği anlık eşitleme değil, kullanıcı onaylı yedekleme ve geri yüklemedir. Room üretimde ana kayıt olana ve gerçek cihaz doğrulaması bitene kadar eşitleme açılmaz.
 
-## Mevcut durum (kod incelemesi)
-- WebView notları `app/src/main/assets/index.html` içinde `localStorage` / `DB` nesnesine yazılıyor.
-- `MainActivity.kt` içinde Firebase Realtime Database'e `backups/{Build.MODEL_Build.ID}` yolundan JSON yedekleme/geri yükleme yapılıyor.
-- Bu yol kullanıcı kimliği değildir; farklı cihazlardan aynı notlara erişim sağlamaz. Mevcut Firebase güvenlik kuralları depoda doğrulanmadı.
-- `importFromCloud` aynı ID'li mevcut kayıtları güncellemiyor ve silinmiş kayıtları senkronize etmiyor. Bu gerçek zamanlı senkronizasyon değildir.
-- Firebase Authentication ve Room henüz entegre değil.
+## Kaynak ve sahiplik
 
-## Hedef
-- Oturum açmadan yerel Room notları; Google girişi isteğe bağlı.
-- Giriş yapan kullanıcıda yalnız kendi `uid` alanına bağlı Firebase Realtime Database verileri.
-- Offline-first: Room tek yerel doğruluk kaynağı, Firebase uzak eşitleme kaynağı.
-- WebView/Leaflet/Gemini mevcut davranışlarını koru.
+- Room cihazdaki tek yazılabilir not kaynağıdır. Arayüz yalnız Room commit'inden sonra “kaydedildi” gösterir.
+- Google oturumu isteğe bağlıdır. Oturum açmak mevcut yerel notları kendiliğinden hesaba yüklemez; kullanıcı önce hangi notların bağlanacağını önizler ve onaylar.
+- Oturum kapatmak buluttaki notları silmez. Cihazda kalan notlar için ayrı, açık bir seçim sunulur.
+- Firestore yolları kullanıcı kimliğine bağlıdır; kurallar başka hesabın okuma/yazmasını reddeder. API anahtarı ve ses/fotoğraf/PDF ekleri bu not eşitlemesinin kapsamı dışındadır.
 
-## Uygulama sırası
-1. Mevcut APK ve Firebase yedekleme davranışını test et; Firebase kurallarını kontrol et. Kurallar doğrulanmadan kişisel veri yükleme.
-2. Room, KSP sürüm uyumu ve ilk şema: `Note(id, cityId, placeId?, title?, body, category?, rating?, createdAt, updatedAt, deletedAt?, syncState)`. Şehir/yer tablolarını gerçek UI veri modeline göre sonra ekle.
-3. `@JavascriptInterface` üzerinden doğrulanmış JSON girişleri ve asenkron Room erişimi. WebView başlangıcında veritabanını yükle; hazır olmadan yazma işlemlerini engelle.
-4. Google girişini isteğe bağlı ekle. Hesapsız notlar cihazda kalır; giriş sonrası kullanıcı onayıyla hesaba bağlanır.
-5. `users/{uid}/notes/{noteId}` yapısına kullanıcı bazlı Firebase kuralları. Sunucu zaman damgası ve çakışma stratejisi, silme için tombstone.
-6. WorkManager ile bağlantı gelince tekrar deneme; çoklu cihaz, çevrimdışı düzenleme, silme, çıkış/giriş testleri.
-7. Başarılı testten sonra eski `localStorage` yazımını devre dışı bırak. Deneme verileri için aktarım zorunlu değil; fakat mevcut uygulama verileri otomatik silinmesin.
+## Not kaydı
 
-## Kabul kriterleri
-- Oturumsuz not ekle/düzenle/sil/ara, uygulama yeniden açılınca kalır.
-- İnternetsiz değişiklikler daha sonra tekil şekilde senkronize edilir.
-- A ve B cihazında aynı hesapla aynı notlar görülür; başka hesap erişemez.
-- Aynı notun iki cihazda düzenlenmesi ve silinmesi öngörülebilir sonuç verir.
-- Harita, Gemini, Firebase mevcut özellikleri için regresyon testleri geçer.
+Uzak kayıt, kararlı not kimliği, şehir, içerik alanları, silme zamanı, sunucu sürümü ve son yazan cihaz kimliğini taşır. Cihaz kimliği yalnız çakışma ayırımı içindir; kullanıcıya görünen not kimliği değişmez. Başlık, içerik, yıldız, renk, kategori, tarih ve `isAI` alanları tam olarak korunur.
 
-Bu dalda şu anda yalnızca plan belgesi bulunur; çalışan Room entegrasyonu değildir.
+Yerel Room satırında uzak sürüm, son indirilen içerik özeti ve gönderim durumu tutulur. Yerel düzenleme, son indirilen sürüme dayanır. Sunucuya yazma bu sürüm eşleşiyorsa kabul edilir; farklıysa yerel içerik ezilmez ve çakışma olarak saklanır. Sunucu zamanı sıralama içindir, tek başına kazananı belirlemez.
+
+## Silme ve çakışma
+
+- Silme, tombstone olarak eşitlenir. Başka cihazdaki eski düzenleme tombstone'u otomatik diriltmez.
+- Aynı not iki cihazda çevrimdışı değişirse iki sürüm de korunur. Kullanıcı “bu sürümü tut”, “diğerini tut” veya “iki kopya olarak sakla” seçer; karar yeni sürüm olarak gönderilir.
+- Tombstone temizliği sabit kısa süreyle yapılmaz. Önce tüm bağlı cihazların veya uzun süre çevrimdışı cihazların durumu için güvenli bir saklama politikası ve kurtarma yolu doğrulanır.
+- Yeniden denenen yazılar aynı işlem kimliğiyle gönderilir. Bağlantı kesilmesi veya süreç ölümü aynı notu çoğaltmamalıdır.
+
+## Çalışma sırası
+
+1. Room üretim geçişi, native kuyruk, yedek ve geri yükleme gerçek cihazda doğrulanır.
+2. Şema ve açık migration ile uzak sürüm ve çakışma kayıtları eklenir; eski APK verisi silinmez.
+3. Firestore kullanıcı yolu ve kuralları emülatörde ayrı hesaplarla test edilir.
+4. İlk hesap bağlama yalnız önizleme ve onayla yapılır. İlk indirme mevcut yerel notlara sessizce yazmaz.
+5. Çevrimdışı yazılar WorkManager ile tekrar denenir; uygulama açılışı ve bağlantı dönüşü aynı kuyruğu kullanır.
+6. İki gerçek cihazda düzenleme, silme, oturum değişimi ve uzun çevrimdışı kalma test edilir.
+
+## Kabul matrisi
+
+| Senaryo | Beklenen sonuç |
+| --- | --- |
+| Aynı not iki cihazda çevrimdışı düzenlenir | İki içerik korunur; çakışma kullanıcıya görünür. |
+| Bir cihaz siler, diğeri eski metni gönderir | Silme kaydı korunur; otomatik diriltme yoktur. |
+| Gönderimden sonra yanıt kaybolur | Aynı işlem tekrarlandığında tek uzak sürüm oluşur. |
+| Kullanıcı hesap değiştirir | Önceki hesabın notları yeni hesaba otomatik yüklenmez. |
+| Kullanıcı oturum açmadan kullanır | Yerel notlar ve yedek dışı özellikler çalışır. |
+| Başka hesap uzak not yolunu okur | Firestore kuralları isteği reddeder. |
+
+Eşitleme, yedekleme düğmesi veya geçmiş yedek listesi olarak sunulmaz; ayrı açma/kapama ve durum ekranı gerektirir.
