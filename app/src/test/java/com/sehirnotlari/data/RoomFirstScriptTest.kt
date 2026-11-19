@@ -131,13 +131,54 @@ class RoomFirstScriptTest {
     }
 
     @Test
+    fun editWaitingBehindAnInflightWriteSurvivesReload() {
+        js("s.hydrate(snap([row('Ankara', 42, 'İlk', 500)]))")
+        js("s.save('Ankara', note(42, 'Birinci')); s.save('Ankara', note(42, 'İkinci'))")
+        assertEquals(2, num("JSON.parse(mem[RoomFirst.OUTBOX_KEY]).length"))
+        val firstId = str("sent[0].id")
+
+        js("var t = mk(); sent = []; t.hydrate(snap([row('Ankara', 42, 'İlk', 500)])); t.resume()")
+        assertEquals(1, num("sent.length"))
+        assertEquals(firstId, str("sent[0].id"))
+        assertEquals("İkinci", str("t.view().Ankara[0].title"))
+        js("t.onResult(sent[0].id, reply('COMMITTED', row('Ankara', 42, 'Birinci', 501), true), null)")
+        assertEquals(2, num("sent.length"))
+        assertEquals(501, num("sent[1].p.base"))
+        assertEquals("İkinci", str("sent[1].p.note.title"))
+        js("t.onResult(sent[1].id, reply('COMMITTED', row('Ankara', 42, 'İkinci', 502), true), null)")
+        assertEquals("[]", str("mem[RoomFirst.OUTBOX_KEY]"))
+    }
+
+    @Test
+    fun pendingOnlyEntryIsSentAfterReload() {
+        js("mem[RoomFirst.OUTBOX_KEY] = JSON.stringify([{state:'pending',op:'UPSERT',city:'Van',id:9,note:note(9,'Taslak'),seq:1}])")
+        js("var t = mk(); t.hydrate(snap([]))")
+        assertEquals(1, num("t.resume()"))
+        assertEquals("Taslak", str("last().p.note.title"))
+        assertEquals(0, num("last().p.base"))
+    }
+
+    @Test
+    fun corruptOutboxIsNotSilentlyTreatedAsEmpty() {
+        js("mem[RoomFirst.OUTBOX_KEY] = '{broken'; var t = mk(); t.hydrate(snap([row('Bursa', 7, 'Eski', 100)]))")
+        assertEquals("Room pending writes could not be read", str("try { t.resume(); 'no error' } catch(e) { e.message }"))
+        assertEquals(0, num("sent.length"))
+        assertEquals("{broken", str("mem[RoomFirst.OUTBOX_KEY]"))
+        js("mem[RoomFirst.OUTBOX_KEY] = JSON.stringify([{state:'pending',op:'UPSERT',city:'Bursa',id:7}])")
+        assertEquals("Room pending writes could not be read", str("try { t.resume(); 'no error' } catch(e) { e.message }"))
+    }
+
+    @Test
     fun failuresAndRefusalsAreNeverShownAsSaved() {
         js("s.hydrate(snap([row('Bursa', 7, 'Ulu Cami', 100), row('Bursa', 8, 'Kebap', 200)]))")
         js("s.save('Bursa', note(7, 'hata alacak'))")
         js("var err = s.onResult(last().id, null, 'SQLiteFullException')")
         assertEquals("error", str("err.status"))
-        assertEquals("Kaydedilemedi; değişiklik uygulanmadı", str("err.notice"))
-        assertEquals("Ulu Cami", str("s.view().Bursa[0].title"))
+        assertEquals("Kayıt doğrulanamadı; değişiklikleri kontrol edin", str("err.notice"))
+        assertEquals("hata alacak", str("s.view().Bursa[0].title"))
+        assertEquals(1, num("s.errorCount()"))
+        assertEquals(1, num("s.pendingCount()"))
+        assertEquals("inflight", str("JSON.parse(mem[RoomFirst.OUTBOX_KEY])[0].state"))
 
         js("s.save('Bursa', note(8, 'eski sürümden'))")
         js("var c = s.onResult(last().id, reply('CONFLICT', row('Bursa', 8, 'başka cihazdan', 250), false), null)")
@@ -149,9 +190,45 @@ class RoomFirstScriptTest {
         assertEquals("deleted", str("d.status"))
         assertEquals(1, num("s.view().Bursa.length"))
 
-        js("failSend = true; s.save('Bursa', note(7, 'köprü yok'))")
+        js("failSend = true; var t = mk(); t.hydrate(snap([row('Bursa', 7, 'Ulu Cami', 100)])); t.save('Bursa', note(7, 'köprü yok'))")
+        assertEquals("error", str("t.statusOf('Bursa', 7).status"))
+        assertEquals(0, num("t.pendingCount()"))
+        assertEquals("Ulu Cami", str("t.view().Bursa[0].title"))
+    }
+
+    @Test
+    fun uncertainNativeFailureKeepsOriginalRequestForReplay() {
+        js("s.hydrate(snap([row('Bursa', 7, 'Eski', 100)])); s.save('Bursa', note(7, 'İlk')); var id = last().id; s.save('Bursa', note(7, 'Son'))")
+        js("s.onResult(id, null, 'reply lost')")
+        assertEquals(1, num("sent.length"))
+        assertEquals("Son", str("s.view().Bursa[0].title"))
+        assertEquals("inflight", str("JSON.parse(mem[RoomFirst.OUTBOX_KEY])[0].state"))
+        assertEquals("pending", str("JSON.parse(mem[RoomFirst.OUTBOX_KEY])[1].state"))
+        js("var t = mk(); t.hydrate(snap([row('Bursa', 7, 'Eski', 100)])); t.resume()")
+        assertEquals(2, num("sent.length"))
+        assertEquals("r1", str("last().id"))
+        js("t.onResult('r1', reply('COMMITTED', row('Bursa', 7, 'İlk', 101), true), null)")
+        assertEquals(3, num("sent.length"))
+        assertEquals("Son", str("last().p.note.title"))
+        assertEquals(101, num("last().p.base"))
+    }
+
+    @Test
+    fun outboxFailureDuringDispatchCannotClaimTheWriteWasSaved() {
+        js("s.hydrate(snap([row('Bursa', 7, 'Ulu Cami', 100)])); var writes = 0; storage.set = function(k,v) { if (++writes === 2) throw new Error('quota'); mem[k] = v; }")
+        assertFalse(bool("s.save('Bursa', note(7, 'Yeni'))"))
+        assertEquals(0, num("sent.length"))
         assertEquals("error", str("s.statusOf('Bursa', 7).status"))
-        assertEquals(0, num("s.pendingCount()"))
+        assertEquals(1, num("s.errorCount()"))
+        assertEquals("Yeni", str("JSON.parse(mem[RoomFirst.OUTBOX_KEY])[0].note.title"))
+    }
+
+    @Test
+    fun initialOutboxFailureIsReportedWithoutSending() {
+        js("s.hydrate(snap([row('Bursa', 7, 'Ulu Cami', 100)])); storage.set = function() { throw new Error('quota'); }")
+        assertFalse(bool("s.save('Bursa', note(7, 'Yeni'))"))
+        assertEquals(0, num("sent.length"))
+        assertEquals(1, num("s.errorCount()"))
         assertEquals("Ulu Cami", str("s.view().Bursa[0].title"))
     }
 

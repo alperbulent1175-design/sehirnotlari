@@ -64,6 +64,55 @@ class RoomFirstWriterTest {
         JSONObject().put("op", "DELETE").put("city", city).put("base", base).put("id", id).toString()
 
     @Test
+    fun cloudSnapshotContainsOnlyCommittedActiveNotesInLegacyShape() = runBlocking {
+        val process = Process(now = 1_000L)
+        process.write(upsert("Bursa", 7, 0, "Ulu Cami"))
+        val deleted = process.write(upsert("İzmir", "old-note", 0, "Eski"))
+        process.write(delete("İzmir", "old-note", deleted.ticket!!))
+        val json = JSONObject(process.writer.snapshot().legacyNotesJson())
+        assertEquals(1, json.getJSONArray("Bursa").length())
+        assertFalse(json.has("İzmir"))
+        val note = json.getJSONArray("Bursa").getJSONObject(0)
+        assertEquals("Ulu Cami", note.getString("title"))
+        assertEquals(false, note.getBoolean("isAI"))
+        assertFalse(note.has("ticket"))
+        assertFalse(note.has("deleted"))
+    }
+
+    @Test
+    fun confirmedImportAddsMissingOnlyAndNeverRevivesDeletedNotes() = runBlocking {
+        val process = Process(now = 1_000L)
+        val existing = process.write(upsert("Bursa", 7, 0, "Korunan"))
+        val gone = process.write(upsert("Bursa", 8, 0, "Silinen"))
+        process.write(delete("Bursa", 8, gone.ticket!!))
+        val payload = JSONObject().put("Bursa", org.json.JSONArray()
+            .put(JSONObject().put("id", 7).put("title", "Üzerine yazma"))
+            .put(JSONObject().put("id", 8).put("title", "Diriltme"))
+            .put(JSONObject().put("id", 9).put("title", "Yeni")))
+            .toString()
+        val result = process.writer.importMissing(payload)
+        assertEquals(1, result.inserted)
+        assertEquals(2, result.skipped)
+        assertEquals("Korunan", process.row("Bursa::7")?.title)
+        assertNotNull(process.row("Bursa::8")?.deletedAt)
+        assertEquals("Yeni", process.row("Bursa::9")?.title)
+        assertEquals(0, process.writer.importMissing(payload).inserted)
+        assertEquals(existing.ticket, process.row("Bursa::7")?.writeTicket)
+    }
+
+    @Test
+    fun malformedConfirmedImportRollsBackAllInsertedNotes() = runBlocking {
+        val process = Process(now = 1_000L)
+        val payload = """{"Bursa":[{"id":1,"title":"Geçerli"},{"title":"Kimlik yok"}]}"""
+        try {
+            process.writer.importMissing(payload)
+            fail("Malformed import should fail")
+        } catch (_: RoomBridgeFailure) {
+            assertNull(process.row("Bursa::1"))
+        }
+    }
+
+    @Test
     fun confirmedCreateEditFavoriteAndDeleteAreReadBackAfterRestart() = runBlocking {
         val first = Process(now = 1_000L)
         val created = first.write(upsert("Bursa", 1_762_380_000_000_123L, 0, "Ulu Cami"))

@@ -2,8 +2,8 @@
 // every change as one request; a note counts as saved only after native reports that the Room
 // transaction committed. One request per note is in flight; edits made meanwhile are coalesced
 // (the latest full note wins) and sent with the ticket of the version they were made from.
-// In-flight requests are kept in an outbox and re-sent unchanged after a reload; native compares
-// the request's base ticket with Room's row, so a request whose reply was lost is never applied twice.
+// In-flight requests and edits waiting behind them are kept in an outbox. After a reload, native
+// compares a re-sent request's base ticket with Room's row, so a lost reply is not applied twice.
 // Pure logic: no DOM, no console, no direct storage access (storage is injected).
 (function (root) {
   'use strict';
@@ -15,7 +15,7 @@
     deleting: 'Siliniyor…',
     saved: 'Room’a kaydedildi',
     removed: 'Not silindi',
-    error: 'Kaydedilemedi; değişiklik uygulanmadı',
+    error: 'Kayıt doğrulanamadı; değişiklikleri kontrol edin',
     conflict: 'Not başka bir işlemle değişmiş; değişikliğiniz kaydedilmedi. Güncel hâli gösteriliyor.',
     deleted: 'Bu not silinmiş; geri getirilmez. Değişikliğiniz kaydedilmedi.'
   };
@@ -67,15 +67,31 @@
     }
 
     function readOutbox() {
+      var raw;
       try {
-        var list = JSON.parse(storage.get(OUTBOX_KEY) || '[]');
-        return Array.isArray(list) ? list : [];
-      } catch (e) { return []; }
+        raw = storage.get(OUTBOX_KEY);
+        if (raw === null || raw === undefined) return [];
+        var list = JSON.parse(raw);
+        if (!Array.isArray(list) || list.some(function (op) {
+          return !op || (op.state !== 'pending' && op.state !== 'inflight') ||
+            (op.op !== 'UPSERT' && op.op !== 'DELETE') || !op.city || op.id === undefined ||
+            (op.op === 'UPSERT' && !op.note) || (op.state === 'inflight' && !op.requestId);
+        })) throw new Error('invalid outbox');
+        return list;
+      } catch (e) { throw new Error('Room pending writes could not be read'); }
     }
 
     function writeOutbox() {
       var list = [];
-      Object.keys(notes).forEach(function (k) { if (notes[k].inflight) list.push(notes[k].inflight); });
+      function entry(op, state) {
+        var copy = { state: state };
+        Object.keys(op).forEach(function (k) { if (k !== 'state') copy[k] = op[k]; });
+        return copy;
+      }
+      Object.keys(notes).forEach(function (k) {
+        if (notes[k].inflight) list.push(entry(notes[k].inflight, 'inflight'));
+        if (notes[k].pending) list.push(entry(notes[k].pending, 'pending'));
+      });
       list.sort(function (a, b) { return a.seq - b.seq; });
       storage.set(OUTBOX_KEY, JSON.stringify(list));
     }
@@ -91,35 +107,46 @@
       e.inflight = op;
       e.status = op.op === 'DELETE' ? 'deleting' : 'saving';
       byRequest[op.requestId] = key;
-      writeOutbox();
+      try { writeOutbox(); }
+      catch (err) {
+        delete byRequest[op.requestId];
+        e.inflight = null;
+        e.pending = op;
+        e.status = 'error';
+        return false;
+      }
       try {
         send(payload(op), op.requestId);
+        return true;
       } catch (err) {
         // The bridge call never happened, so nothing can have reached Room.
         delete byRequest[op.requestId];
         e.inflight = null;
-        e.pending = null;
         e.status = 'error';
-        writeOutbox();
+        try { writeOutbox(); } catch (_) { /* The earlier outbox entry can still be retried on reload. */ }
+        return false;
       }
     }
 
     function dispatch(key) {
       var e = notes[key];
-      if (!e || e.inflight || !e.pending) return;
+      if (!e || e.inflight || !e.pending) return false;
       var op = e.pending;
       e.pending = null;
       op.base = rows[key] ? rows[key].ticket : 0;
       op.requestId = newId();
       op.seq = ++seq;
-      transmit(key, op);
+      return transmit(key, op);
     }
 
     function change(city, id, op) {
       if (!ready) return false;
       var key = keyOf(city, id), e = entryFor(key, city, id);
+      var previous = e.pending;
+      op.seq = ++seq;
       e.pending = op;
-      if (!e.inflight) dispatch(key);
+      try { writeOutbox(); } catch (err) { e.pending = previous; e.status = 'error'; return false; }
+      if (!e.inflight) return dispatch(key);
       else e.status = op.op === 'DELETE' ? 'deleting' : 'saving';
       return true;
     }
@@ -165,12 +192,22 @@
       resume: function () {
         var list = readOutbox().sort(function (a, b) { return a.seq - b.seq; }), sent = 0;
         list.forEach(function (op) {
-          if (!op || !op.requestId || !op.city || op.id === undefined) return;
           var key = keyOf(op.city, op.id), e = entryFor(key, op.city, op.id);
-          if (e.inflight) return;
           seq = Math.max(seq, op.seq || 0);
-          transmit(key, op);
-          sent++;
+          if (op.state === 'pending') e.pending = op;
+          else if (!e.inflight) e.inflight = op;
+        });
+        Object.keys(notes).forEach(function (key) {
+          var e = notes[key];
+          if (e.inflight) {
+            var op = e.inflight;
+            e.inflight = null;
+            transmit(key, op);
+            sent++;
+          } else if (e.pending) {
+            dispatch(key);
+            sent++;
+          }
         });
         return sent;
       },
@@ -189,10 +226,17 @@
         if (key === undefined) return { unknown: true };
         delete byRequest[requestId];
         var e = notes[key], op = e.inflight, out = { key: key, op: op.op, roomChanged: false, ticket: null };
-        e.inflight = null;
         if (error || !result) {
           out.status = 'error';
+          // The native write may have committed even if its reply was lost. Keep the
+          // original request id and base ticket so a reload can safely replay it.
+          e.status = 'error';
+          writeOutbox();
+          out.notice = STATUS_TEXT.error;
+          out.followUp = false;
+          return out;
         } else {
+          e.inflight = null;
           applyRow(key, result.row);
           out.roomChanged = true;
           out.ticket = result.row ? result.row.ticket : null;
@@ -232,6 +276,10 @@
 
       pendingCount: function () {
         return Object.keys(notes).filter(function (k) { return notes[k].inflight || notes[k].pending; }).length;
+      },
+
+      errorCount: function () {
+        return Object.keys(notes).filter(function (k) { return notes[k].status === 'error'; }).length;
       }
     };
   }

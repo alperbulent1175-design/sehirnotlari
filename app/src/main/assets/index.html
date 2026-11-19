@@ -2,6 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="frame-src 'none'; object-src 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#1a2332">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -9,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Şehir Notları">
 <link rel="manifest" href="./manifest.json">
 <title>Türkiye Şehir Notları</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="./vendor/leaflet/leaflet.css">
 <style>
 :root{
   --bg:#eef2f5;--surf:#fff;--surf2:#f5f7fa;--brd:#dde3ea;
@@ -139,6 +140,9 @@ body.undo-on .map-fab{transform:translateY(-72px)}
 .sort-row::-webkit-scrollbar{display:none}
 .sort-btn{background:var(--surf);border:1px solid var(--brd);min-height:48px;padding:0 14px;border-radius:24px;font-size:13px;cursor:pointer;color:var(--txt2);font-family:inherit;white-space:nowrap;flex-shrink:0;transition:all .12s}
 .sort-btn.on{background:var(--txt);color:var(--surf);border-color:var(--txt)}
+.search-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0 12px}
+.search-filters label{font-size:12px;color:var(--txt2);font-weight:700}
+.search-filters select,.search-filters input{display:block;width:100%;min-height:42px;margin-top:4px;padding:7px 9px;border:1px solid var(--brd);border-radius:var(--rsm);background:var(--surf);color:var(--txt);font:inherit}
 .cc{width:100%;min-height:56px;text-align:left;font-family:inherit;color:inherit;background:var(--surf);border:1px solid var(--brd);border-left-width:4px;border-radius:var(--rsm);padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:all .12s}
 .cc:active{background:var(--surf2);transform:scale(.99)}
 .ccl{display:flex;align-items:center;gap:8px;min-width:0}
@@ -296,6 +300,8 @@ body.rf-on .scroll-area{padding-bottom:calc(64px + var(--sb,0px))}
 .ff input,.ff textarea{width:100%;min-height:48px;border:1.5px solid var(--brd);border-radius:var(--rsm);padding:9px 11px;font-size:16px;font-family:inherit;color:var(--txt);background:var(--surf);outline:none;transition:border-color .15s;-webkit-appearance:none}
 .ff input:focus,.ff textarea:focus{border-color:var(--acc)}
 .ff textarea{resize:vertical;min-height:80px;line-height:1.5}
+.note-hint{display:block;margin-top:4px;text-align:right;font-size:12px;color:var(--txt3)}
+.note-hint.near{color:#a64200;font-weight:700}
 .star-row{display:flex;flex-wrap:wrap;align-items:center;gap:0;margin-bottom:9px}
 .star{font-size:24px;cursor:pointer;opacity:.3;transition:opacity .1s,transform .1s;line-height:1;flex-shrink:0;min-width:48px;min-height:48px;padding:0;border:none;background:none;color:#c27c00;font-family:inherit;border-radius:10px}
 [data-theme=dark] .star{color:#f5b942}
@@ -382,6 +388,8 @@ body.undo-on .toast:not(.show){visibility:hidden}
 .loading-ov{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:5000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
 .loading-box{background:var(--surf);padding:24px;border-radius:var(--r);display:flex;flex-direction:column;align-items:center;gap:15px;box-shadow:0 8px 32px rgba(0,0,0,0.4);min-width:140px}
 .loading-box span{font-weight:700;color:var(--txt);font-size:14px}
+.pdf-progress{width:220px;height:7px;background:var(--brd);border-radius:999px;overflow:hidden}
+.pdf-progress>span{display:block;width:0;height:100%;background:var(--acc);transition:width .2s ease}
 
 /* In-app update: "Neler Yeni?" dialog. The WebView already applies the system font scale to px sizes. */
 .upd-ov{z-index:3400;padding:12px max(12px,var(--sb,0px))}
@@ -471,7 +479,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
     <h1 style="font-family:'Segoe UI',Roboto,Helvetica,sans-serif;letter-spacing:-0.5px;font-style:normal">Türkiye Şehir Notları</h1>
   </div>
 </header>
-<div class="offline-bar" id="offlineBar" role="status">📡 Çevrimdışı — notlarınız çalışmaya devam ediyor</div>
+<div class="offline-bar" id="offlineBar" role="status">📡 Çevrimdışı — il haritası ve notlarınız çalışmaya devam ediyor</div>
 
 <main class="views">
 <section class="view" id="view-map" aria-labelledby="mapTitle">
@@ -483,7 +491,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
     <div class="map-err" id="mapError" hidden>
       <div class="map-err-card" role="alert">
         <strong>Harita yüklenemedi</strong>
-        <p>İnternet bağlantınızı kontrol edin. Notlarınız güvende; şehri listeden seçerek not ekleyebilirsiniz.</p>
+        <p>Harita verisi açılamadı. Notlarınız güvende; şehri listeden seçerek not ekleyebilirsiniz.</p>
         <button type="button" class="city-btn primary" id="mapRetry">Tekrar dene</button>
         <button type="button" class="city-btn secondary" id="mapPick">Şehir listesinden seç</button>
       </div>
@@ -508,6 +516,15 @@ body.undo-on .toast:not(.show){visibility:hidden}
   </div>
   <div class="tab-panel on" id="tab-notes">
     <div class="sch"><div class="sch-inner"><span class="sch-icon" aria-hidden="true">🔍</span><input id="schIn" placeholder="Şehir, not veya kategori ara…" type="search" aria-label="Notlu şehirlerde ara"></div></div>
+    <div class="search-filters" aria-label="Not filtreleri">
+      <label>Şehir<select id="searchCity"><option value="">Tüm şehirler</option></select></label>
+      <label>Etiket<select id="searchTag"><option value="">Tüm etiketler</option></select></label>
+      <label>Başlangıç tarihi<input id="searchFrom" type="date"></label>
+      <label>Bitiş tarihi<input id="searchTo" type="date"></label>
+      <label>En az yıldız<select id="searchStar"><option value="0">Tüm puanlar</option><option value="1">1 ★</option><option value="2">2 ★</option><option value="3">3 ★</option><option value="4">4 ★</option><option value="5">5 ★</option></select></label>
+      <button type="button" class="sort-btn" id="searchClear">Filtreleri temizle</button>
+    </div>
+    <p class="bk-desc">Etiket için not başlığına veya metnine #etiket yazın.</p>
     <div class="sum">
       <div class="sh2">Notlu Şehirler <span class="bdg" id="ab">0</span></div>
       <div class="sort-row" role="group" aria-label="Sıralama">
@@ -540,13 +557,11 @@ body.undo-on .toast:not(.show){visibility:hidden}
 <section class="view scroll-area" id="view-backup" aria-labelledby="backupTitle" hidden>
   <div class="page"><h2 class="page-h" id="backupTitle" tabindex="-1">Yedek ve veri güvenliği</h2></div>
     <div class="backup-wrap">
-      <div class="bk-card"><div class="bk-title">📤 Dışa Aktar</div><div class="bk-desc">Tüm notları JSON olarak indirin.</div><button class="bk-btn primary" onclick="exportJSON()">JSON İndir</button><p class="bk-status" id="exportStatus" role="status" aria-live="polite"></p></div>
-      <div class="bk-card"><div class="bk-title">📥 İçe Aktar</div><div class="bk-desc">Önceden dışa aktardığınız JSON'ı yükleyin. Eklenecek notları önce gösterir; mevcut notlar korunur.</div><button type="button" class="bk-btn secondary" onclick="pickImportFile()">Dosya Seç</button><input type="file" id="restoreFile" accept=".json" onchange="importJSON(this)"><p class="bk-status" id="importStatus" role="status" aria-live="polite"></p><button type="button" class="bk-btn secondary" id="impRoomRetry" hidden>Room kopyasını yeniden dene</button></div>
-      <div class="bk-card"><div class="bk-title">📧 E-posta</div><div class="bk-desc">Notları e-posta uygulamanıza aktarın.</div><button class="bk-btn secondary" onclick="emailNotes()">E-posta Aç</button></div>
       <section class="bk-card" id="cloudCard" aria-labelledby="cloudTitle">
         <h2 class="bk-title" id="cloudTitle">☁️ Bulut Yedekleme</h2>
         <p class="bk-desc">Notlarınızın bir kopyasını Google hesabınıza bağlı, yalnız sizin erişebildiğiniz bir alanda saklar; son 5 tamamlanmış yedek tutulur. Oturum açmadan da uygulama ve notlarınız aynen çalışır.</p>
         <p class="bk-desc" id="cloudAccount"></p>
+        <p class="bk-desc" id="cloudRoomNotice" hidden>Room ana kaynak denemesinde otomatik yedekleme kapalı. Elle yedekleme ve önizlemeli geri yükleme kullanılabilir.</p>
         <div class="ds-actions">
           <button type="button" class="bk-btn primary" id="cloudSignIn" hidden>Google ile oturum aç</button>
           <button type="button" class="bk-btn primary" id="cloudBackupNow" hidden>Şimdi yedekle</button>
@@ -557,6 +572,8 @@ body.undo-on .toast:not(.show){visibility:hidden}
         <ul class="ds-hist cloud-list" id="cloudList" aria-label="Bulut yedekleri"></ul>
         <button type="button" class="bk-btn secondary" id="cloudSignOut" hidden>Oturumu kapat</button>
       </section>
+      <div class="bk-card"><div class="bk-title">📤 Dışa Aktar</div><div class="bk-desc">Tüm notları JSON olarak indirin.</div><button class="bk-btn primary" onclick="exportJSON()">JSON İndir</button><p class="bk-status" id="exportStatus" role="status" aria-live="polite"></p></div>
+      <div class="bk-card"><div class="bk-title">📥 İçe Aktar</div><div class="bk-desc">Önceden dışa aktardığınız JSON'ı yükleyin. Eklenecek notları önce gösterir; mevcut notlar korunur.</div><button type="button" class="bk-btn secondary" onclick="pickImportFile()">Dosya Seç</button><input type="file" id="restoreFile" accept=".json" onchange="importJSON(this)"><p class="bk-status" id="importStatus" role="status" aria-live="polite"></p><button type="button" class="bk-btn secondary" id="impRoomRetry" hidden>Room kopyasını yeniden dene</button></div>
       <section class="bk-card ds-card" id="dataSafety" data-state="checking" aria-labelledby="dsTitle">
         <h2 class="bk-title" id="dsTitle" tabindex="-1">🛡️ Veri Güvenliği</h2>
         <p class="bk-desc">Telefondaki notlarınız (ana kayıt, localStorage) ile Room kopyası her açılışta karşılaştırılır. Buradaki işlemler yalnız Room kopyasını değiştirir; notlarınız değişmez.</p>
@@ -608,11 +625,19 @@ body.undo-on .toast:not(.show){visibility:hidden}
       <button type="button" class="set-row" id="remBtn"><span class="set-ico" aria-hidden="true">🔔</span><span class="set-txt"><strong>Hatırlatıcı kur</strong><span>Bir şehir için bildirim zamanı seçin</span></span></button>
     </div>
     <h3 class="set-h" id="aiTitle2">Akıllı özellikler</h3>
-    <p class="set-hint" id="aiOffNote" hidden>Bu sürümde kapalı. Notlarınız etkilenmez.</p>
+    <p class="set-hint" id="aiOffNote" hidden>Gemini API anahtarı ekleyerek açabilirsiniz. Notlarınız etkilenmez.</p>
+    <div id="aiKeySettings" class="ff" style="padding:12px 0">
+      <label for="aiKeyInput">Kendi Gemini API anahtarınız</label>
+      <input id="aiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="API anahtarı" style="width:100%;padding:9px;border-radius:var(--rsm);border:1.5px solid var(--brd);background:var(--surf);color:var(--txt)">
+      <p class="set-hint">Anahtar yalnız bu cihazda saklanır. Geçerliliği ilk istekte anlaşılır. AI isteklerinde seçtiğiniz PDF, ses veya fotoğraf Google Gemini hizmetine gönderilir. Kullanım kotası ve ücretler hesabınıza bağlıdır.</p>
+      <button type="button" class="ds-btn" id="aiKeySave">Anahtarı kaydet</button>
+      <button type="button" class="ds-btn" id="aiKeyClear">Anahtarı kaldır</button>
+    </div>
     <div class="set-list" role="group" aria-labelledby="aiTitle2">
       <button type="button" class="set-row" id="micBtn"><span class="set-ico" aria-hidden="true">🎤</span><span class="set-txt"><strong>Sesli not</strong><span>Konuşmanızı yapay zekâ ile metne çevirir</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
+      <button type="button" class="set-row" id="photoBtn"><span class="set-ico" aria-hidden="true">🖼️</span><span class="set-txt"><strong>Fotoğrafı yorumla</strong><span>Fotoğraf çekip yapay zekâdan not taslağı alın</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
       <button type="button" class="set-row" id="multiBtn"><span class="set-ico" aria-hidden="true">📸</span><span class="set-txt"><strong>Akıllı analiz</strong><span>Fotoğraf ve sesinizden not oluşturur</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
-      <button type="button" class="set-row" id="pdfBtn"><span class="set-ico" aria-hidden="true">✨</span><span class="set-txt"><strong>PDF özeti</strong><span>Bir PDF dosyasını özetleyip nota dönüştürür</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
+      <button type="button" class="set-row" id="pdfBtn"><span class="set-ico" aria-hidden="true">✨</span><span class="set-txt"><strong>PDF özeti</strong><span>Gemini 3.8 Flash ile özetler · PDF en fazla 30 MB</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
     </div>
     <h3 class="set-h">Uygulama</h3>
     <div class="set-list">
@@ -665,8 +690,8 @@ body.undo-on .toast:not(.show){visibility:hidden}
         <button type="button" class="cat" data-c="Kültür" aria-pressed="false"><span aria-hidden="true">🏛️</span> Kültür</button>
         <button type="button" class="cat" data-c="Genel" aria-pressed="false"><span aria-hidden="true">📝</span> Genel</button>
       </div>
-      <div class="ff"><label for="nt">Başlık</label><input id="nt" type="text" placeholder="Not başlığı…" maxlength="80"></div>
-      <div class="ff"><label for="nc">İçerik</label><textarea id="nc" placeholder="Not içeriği…" maxlength="2000"></textarea></div>
+      <div class="ff"><label for="nt">Başlık</label><input id="nt" type="text" placeholder="Not başlığı…" maxlength="80"><small class="note-hint" id="ntCount">0 / 80</small></div>
+      <div class="ff"><label for="nc">İçerik</label><textarea id="nc" placeholder="Not içeriği… #etiket ekleyebilirsiniz" maxlength="8000" style="min-height:130px"></textarea><small class="note-hint" id="ncCount">0 / 8000 karakter</small></div>
       <div class="star-row" id="newStars" role="group" aria-label="Puan">
         <button type="button" class="star" data-v="1" aria-label="1 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="2" aria-label="2 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="3" aria-label="3 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="4" aria-label="4 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="5" aria-label="5 yıldız" aria-pressed="false">★</button>
         <span id="starLabel">Puan ver</span>
@@ -718,8 +743,8 @@ body.undo-on .toast:not(.show){visibility:hidden}
 <div class="sub-ov" id="editOv">
   <div class="sub-box" role="dialog" aria-modal="true" aria-labelledby="editTitle">
     <h3 id="editTitle" tabindex="-1"><span aria-hidden="true">✏️</span> Notu Düzenle</h3>
-    <div class="ff"><label for="eTitle">Başlık</label><input id="eTitle" type="text" maxlength="80"></div>
-    <div class="ff"><label for="eContent">İçerik</label><textarea id="eContent" maxlength="2000" style="min-height:80px"></textarea></div>
+    <div class="ff"><label for="eTitle">Başlık</label><input id="eTitle" type="text" maxlength="80"><small class="note-hint" id="eTitleCount">0 / 80</small></div>
+    <div class="ff"><label for="eContent">İçerik</label><textarea id="eContent" maxlength="8000" style="min-height:130px"></textarea><small class="note-hint" id="eContentCount">0 / 8000 karakter</small></div>
     <div class="star-row" id="editStars" role="group" aria-label="Puan"><button type="button" class="star" data-v="1" aria-label="1 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="2" aria-label="2 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="3" aria-label="3 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="4" aria-label="4 yıldız" aria-pressed="false">★</button><button type="button" class="star" data-v="5" aria-label="5 yıldız" aria-pressed="false">★</button></div>
     <div class="sub-row"><button class="ok" onclick="saveEdit()">Kaydet</button><button class="cancel" onclick="closeEdit()">İptal</button></div>
     <div class="edit-del-wrap"><button type="button" class="edit-del" id="eDelete" onclick="askDelete()"><span aria-hidden="true">🗑️</span> Notu sil</button></div>
@@ -751,10 +776,11 @@ body.undo-on .toast:not(.show){visibility:hidden}
   <div class="sub-box" role="dialog" aria-modal="true" aria-labelledby="remTitle">
     <h3 id="remTitle"><span aria-hidden="true">🔔</span> Hatırlatıcı Kur</h3>
     <p style="font-size:13px;color:var(--txt3);margin-bottom:12px">Seçilen zamanda bildirim alırsınız.</p>
-    <div class="ff"><label for="remCity">Şehir</label><input id="remCity" type="text" placeholder="Şehir adı…"></div>
+    <div class="ff"><label for="remCity">Şehir</label><input id="remCity" type="text" placeholder="Şehir adı…" maxlength="80"></div>
     <div class="ff"><label for="remMsg">Mesaj</label><input id="remMsg" type="text" placeholder="Hatırlatıcı mesajı…" maxlength="80"></div>
     <div class="ff"><label for="remTime">Tarih &amp; Saat</label><input type="datetime-local" id="remTime" style="width:100%;padding:9px 11px;border-radius:var(--rsm);border:1.5px solid var(--brd);font-size:14px;font-family:inherit;color:var(--txt);background:var(--surf);outline:none;-webkit-appearance:none"></div>
     <div class="sub-row"><button class="ok" onclick="saveReminder()">Kur</button><button class="cancel" onclick="document.getElementById('remOv').classList.remove('open')">İptal</button></div>
+    <div id="remList" role="list" aria-label="Yaklaşan hatırlatıcılar"></div>
   </div>
 </div>
 
@@ -806,6 +832,7 @@ body.undo-on .toast:not(.show){visibility:hidden}
   <div class="loading-box">
     <div class="spinner" style="width:36px;height:36px;border-width:4px"></div>
     <span id="loadingTxt">İşleniyor...</span>
+    <div class="pdf-progress" id="pdfProgress" hidden aria-label="PDF yükleme ilerlemesi"><span id="pdfProgressFill"></span></div>
   </div>
 </div>
 <div class="sub-ov upd-ov" id="updOv">
@@ -825,11 +852,13 @@ body.undo-on .toast:not(.show){visibility:hidden}
 <div class="undo-bar" id="undoBar" role="status" aria-live="polite" hidden><span id="undoText"></span><button type="button" id="undoBtn">Geri Al</button></div>
 <div class="rf-bar" id="rfBar" role="status" aria-live="polite" hidden></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="./vendor/leaflet/leaflet.js"></script>
+<script src="./data/tr-cities.js"></script>
 <script src="note-ids.js"></script>
 <script src="note-delete.js"></script>
 <script src="city-pick.js"></script>
 <script src="notes-file.js"></script>
+<script src="note-search.js"></script>
 <script src="cloud-backup.js"></script>
 <script src="data-safety.js"></script>
 <script src="room-first.js"></script>
@@ -838,7 +867,17 @@ body.undo-on .toast:not(.show){visibility:hidden}
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 let _tt,rfToast=null;const toast=m=>{if(rfToast){m=rfToast;rfToast=null;}const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2500);};
 const showLoading=m=>{document.getElementById('loadingTxt').textContent=m||'İşleniyor...';document.getElementById('loadingOv').style.display='flex';};
-const hideLoading=()=>document.getElementById('loadingOv').style.display='none';
+const hideLoading=()=>{document.getElementById('loadingOv').style.display='none';document.getElementById('pdfProgress').hidden=true;};
+function onPdfUploadProgress(percent){
+  const n=Math.max(0,Math.min(100,Number(percent)||0));
+  document.getElementById('pdfProgress').hidden=false;
+  document.getElementById('pdfProgressFill').style.width=n+'%';
+  showLoading('PDF yükleniyor: %'+n);
+}
+function onPdfStage(stage){
+  document.getElementById('pdfProgress').hidden=true;
+  showLoading(stage==='processing'?'PDF inceleniyor...':'Özet hazırlanıyor...');
+}
 const CEMOJI={Gezi:'📍',Lezzet:'🍔',Kültür:'🏛️',Genel:'📝'};
 const BOLGE_COLORS={marmara:'#5B9BD5',ege:'#6BAE8C',akdeniz:'#E8904A',ic:'#9B7FBF',karadeniz:'#4F9E7C',dogu:'#D4675A',gun:'#C49A2E'};
 const BOLGE_DARK={marmara:'#2E7BC4',ege:'#3D8A66',akdeniz:'#C86820',ic:'#725598',karadeniz:'#2B7A5A',dogu:'#AA3A2F',gun:'#9A7010'};
@@ -932,13 +971,11 @@ function buildPins(){
   });
 }
 
-// Leaflet and the province borders come from CDNs: offline the map shows a retry card,
-// and notes stay reachable through "+ Not Ekle" and Notlarım.
+// Leaflet and province borders are bundled; only optional background tiles need the network.
 function loadLeaflet(){
   if(window.L)return Promise.resolve();
   return new Promise((resolve,reject)=>{
-    const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css);
-    const s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    const s=document.createElement('script');s.src='./vendor/leaflet/leaflet.js';
     s.onload=()=>window.L?resolve():reject(new Error('Leaflet missing'));s.onerror=()=>{s.remove();reject(new Error('Leaflet unavailable'));};
     document.head.appendChild(s);
   });
@@ -955,8 +992,11 @@ async function loadMap(){
   try{await loadLeaflet();}catch{mapFailed();return;}
   if(lmap){await loadProvinces();return;}
   lmap=L.map('map',{center:[39.0,35.5],zoom:6,zoomControl:false,keyboard:false,minZoom:5,maxZoom:12,maxBounds:[[34.0,23.5],[43.5,46.5]],maxBoundsViscosity:1.0});
+  lmap.attributionControl.addAttribution('İl sınırları: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap katkıda bulunanlar</a> (ODbL)');
   const addTile=()=>{
     if(lmap._tile)lmap.removeLayer(lmap._tile);
+    lmap._tile=null;
+    if(!navigator.onLine)return;
     // CARTO free basemaps now return blank/API-key stubs; use keyless providers.
     if(isDark()){
       lmap._tile=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles &copy; <a href="https://www.esri.com/">Esri</a>',maxZoom:16,detectRetina:true}).addTo(lmap);
@@ -969,12 +1009,7 @@ async function loadMap(){
   await loadProvinces();
 }
 async function loadProvinces(){
-  let geo=null;
-  for(const url of['https://cdn.jsdelivr.net/gh/cihadturhan/tr-map@master/geo/tr-cities-utf8.json','https://raw.githubusercontent.com/cihadturhan/tr-map/master/geo/tr-cities-utf8.json']){
-    const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
-    try{const r=await fetch(url,{signal:ctl.signal});if(r.ok){geo=await r.json();break;}}catch{}
-    finally{clearTimeout(timer);}
-  }
+  const geo=window.PROVINCE_GEOJSON;
   if(!geo){mapFailed();return;}
   document.getElementById('mapLoading').style.display='none';document.getElementById('view-map').classList.remove('map-off');
   if(geoLayer)lmap.removeLayer(geoLayer);
@@ -1076,17 +1111,39 @@ document.getElementById('addFab').onclick=e=>openPicker(e.currentTarget);
 // Public builds ship without an AI key; their AI buttons explain that instead of failing later.
 function aiOff(){
   const off=!!(window.Android&&typeof window.Android.aiAvailable==='function'&&!window.Android.aiAvailable());
-  if(off)toast('Yapay zekâ özellikleri bu sürümde kullanılamıyor.');
+  if(off)toast('Yapay zekâ için Ayarlar’dan Gemini API anahtarı ekleyin.');
   return off;
 }
-const AI_ON=!(window.Android&&typeof window.Android.aiAvailable==='function'&&!window.Android.aiAvailable());
-if(!AI_ON){document.getElementById('aiOffNote').hidden=false;document.querySelectorAll('.ai-off-tag').forEach(t=>{t.hidden=false;});}
+let AI_ON=true;
+function refreshAiAvailability(){
+  AI_ON=!(window.Android&&typeof window.Android.aiAvailable==='function'&&!window.Android.aiAvailable());
+  document.getElementById('aiOffNote').hidden=AI_ON;
+  document.querySelectorAll('.ai-off-tag').forEach(t=>{t.hidden=AI_ON;});
+  document.getElementById('aiKeySettings').hidden=!(window.Android&&typeof window.Android.saveAiApiKey==='function');
+}
+refreshAiAvailability();
+document.getElementById('aiKeySave').onclick=()=>{
+  const input=document.getElementById('aiKeyInput');
+  if(!window.Android?.saveAiApiKey)return;
+  const saved=window.Android.saveAiApiKey(input.value);input.value='';
+  refreshAiAvailability();toast(saved?'Gemini anahtarı kaydedildi':'Anahtar kaydedilemedi; biçimini kontrol edin.');
+};
+document.getElementById('aiKeyClear').onclick=()=>{
+  if(!window.Android?.clearAiApiKey)return;
+  const cleared=window.Android.clearAiApiKey();document.getElementById('aiKeyInput').value='';
+  refreshAiAvailability();toast(cleared?'Gemini anahtarı kaldırıldı':'Anahtar kaldırılamadı.');
+};
 document.getElementById('pdfBtn').onclick=()=>{
   if(aiOff())return;
   if(window.Android && window.Android.pickPDF){
     window.Android.pickPDF("");
-    toast('📄 PDF Seçiliyor...');
+    toast('📄 PDF seçin (en fazla 30 MB)');
   } else toast('Bu özellik Android uygulamada çalışır.');
+};
+document.getElementById('photoBtn').onclick=()=>{
+  if(aiOff())return;
+  if(window.Android?.startPhotoAnalysis)window.Android.startPhotoAnalysis(curCity||'');
+  else toast('Bu özellik Android uygulamada çalışır.');
 };
 let isMultiModal = false;
 document.getElementById('multiBtn').onclick=()=>{
@@ -1122,11 +1179,14 @@ document.getElementById('micStartBtn').onclick=()=>{
         } else {
             window.Android.startRecording();
         }
-        document.getElementById('micStatus').textContent = "🔴 Dinleniyor...";
-        document.getElementById('micStartBtn').style.display = "none";
-        document.getElementById('micStopBtn').style.display = "block";
+        document.getElementById('micStatus').textContent = "İzin ve kayıt hazırlanıyor...";
     }
 };
+function onAIRecordingStarted(){
+  document.getElementById('micStatus').textContent='🔴 Dinleniyor...';
+  document.getElementById('micStartBtn').style.display='none';
+  document.getElementById('micStopBtn').style.display='block';
+}
 
 document.getElementById('micStopBtn').onclick=()=>{
     if(window.Android && window.Android.stopRecording){
@@ -1141,6 +1201,7 @@ document.getElementById('micStopBtn').onclick=()=>{
     }
 };
 document.getElementById('remBtn').onclick=()=>{
+  if(window.Android?.requestReminderPermission)window.Android.requestReminderPermission();
   document.getElementById('remCity').value=curCity||'';
   document.getElementById('remMsg').value=curCity?`${curCity} şehri için notlarına bak!`:'';
 
@@ -1155,8 +1216,24 @@ document.getElementById('remBtn').onclick=()=>{
 
   document.getElementById('remTime').value = localISOTime;
   document.getElementById('remOv').classList.add('open');
+  renderReminders();
 };
 document.getElementById('cityRem').onclick=()=>document.getElementById('remBtn').onclick();
+function renderReminders(){
+  const box=document.getElementById('remList');box.replaceChildren();
+  if(!window.Android?.listReminders)return;
+  let items=[];try{items=JSON.parse(window.Android.listReminders());}catch{return;}
+  items.filter(x=>x.time>Date.now()).sort((a,b)=>a.time-b.time).forEach(item=>{
+    const row=document.createElement('div');row.setAttribute('role','listitem');row.className='set-row';
+    const label=document.createElement('span');label.className='set-txt';
+    const title=document.createElement('strong');title.textContent=item.city;
+    const detail=document.createElement('span');detail.textContent=`${new Date(item.time).toLocaleString('tr-TR')} · ${item.message}`;
+    label.append(title,detail);
+    const cancel=document.createElement('button');cancel.type='button';cancel.className='bk-btn secondary';cancel.textContent='İptal';cancel.setAttribute('aria-label',`${item.city} hatırlatıcısını iptal et`);
+    cancel.onclick=()=>{if(window.Android.cancelReminder(item.id)){toast('Hatırlatıcı iptal edildi');renderReminders();}else toast('Hatırlatıcı iptal edilemedi');};
+    row.append(label,cancel);box.appendChild(row);
+  });
+}
 function saveReminder(){
   const city=document.getElementById('remCity').value.trim(),
         msg=document.getElementById('remMsg').value.trim()||`${city} hatırlatıcısı`,
@@ -1171,8 +1248,12 @@ function saveReminder(){
   if(delay<=0){toast('Geçmiş zaman!');return;}
 
   if(window.Android && window.Android.scheduleReminder){
-    window.Android.scheduleReminder(city, msg, timestamp);
-    toast('✅ Hatırlatıcı kuruldu (GMT+3)');
+    try{
+      const result=JSON.parse(window.Android.scheduleReminder(city,msg,timestamp));
+      if(result.error){toast(result.error);return;}
+      toast(result.exact?'✅ Hatırlatıcı kuruldu':'✅ Hatırlatıcı kuruldu; sistem bildirimi geciktirebilir');
+      renderReminders();
+    }catch{toast('Hatırlatıcı kurulamadı');return;}
   } else if('Notification' in window){
     Notification.requestPermission().then(p=>{
       if(p==='granted'){
@@ -1190,25 +1271,28 @@ function pickPDF() {
     if (aiOff()) return;
     if (window.Android && window.Android.pickPDF) {
         window.Android.pickPDF(curCity || "");
-        toast('📄 PDF Seçiliyor...');
+        toast('📄 PDF seçin (en fazla 30 MB)');
     } else {
         toast('Bu özellik şu an sadece Android uygulamada çalışır.');
     }
 }
 
 let pendingAI = null;
-function onAISummaryReady(title, content) {
+function onAISummaryReady(title, content, city) {
     hideLoading();
     pendingAI = { title, content };
     document.getElementById('aiTitle').textContent = "✨ " + title;
     document.getElementById('aiContent').value = content;
 
     const sel = document.getElementById('aiCitySelect');
-    sel.innerHTML = Object.keys(CITY_COORDS).sort().map(c => `<option value="${c}" ${c === curCity ? 'selected' : ''}>${c}</option>`).join('');
+    const selected=CITY_COORDS[city]?city:'';
+    sel.innerHTML = (selected?'':'<option value="" selected disabled>Şehir seçin</option>')+
+      Object.keys(CITY_COORDS).sort().map(c => `<option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>`).join('');
 
     document.getElementById('aiOv').classList.add('open');
     toast('✨ AI Özeti Hazır!');
 }
+function onAIError(message){hideLoading();toast(message);}
 function closeAIOv(){ document.getElementById('aiOv').classList.remove('open'); pendingAI = null; }
 function confirmAI(){
   const city = document.getElementById('aiCitySelect').value;
@@ -1246,14 +1330,17 @@ document.getElementById('cats').onclick=e=>{const c=e.target.closest('.cat');if(
 
 // Weather
 const wxC={};
-async function fetchWx(city){const now=Date.now();if(wxC[city]&&now-wxC[city].ts<30*60*1000)return wxC[city].d;const c=CITY_COORDS[city];if(!c)return null;try{const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c[0]}&longitude=${c[1]}&current_weather=true&hourly=relative_humidity_2m,apparent_temperature&timezone=Europe%2FIstanbul&forecast_days=1`);if(!r.ok)return null;const d=await r.json();const cw=d.current_weather,h=new Date().getHours();const res={temp:Math.round(cw.temperature),feel:d.hourly?.apparent_temperature?.[h]!=null?Math.round(d.hourly.apparent_temperature[h]):null,wind:Math.round(cw.windspeed),desc:WMO[cw.weathercode]||'—',hum:d.hourly?.relative_humidity_2m?.[h]??null};wxC[city]={ts:now,d:res};return res;}catch{return null;}}
+async function fetchWx(city){const now=Date.now();if(wxC[city]&&now-wxC[city].ts<30*60*1000)return wxC[city].d;const c=CITY_COORDS[city];if(!c)return null;try{const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c[0]}&longitude=${c[1]}&current_weather=true&hourly=relative_humidity_2m,apparent_temperature&timezone=Europe%2FIstanbul&forecast_days=1`);if(!r.ok)return null;const d=await r.json();const cw=d.current_weather;if(!cw)return null;const h=d.hourly?.time?.indexOf(cw.time)??-1;const feel=h>=0?d.hourly?.apparent_temperature?.[h]:null;const hum=h>=0?d.hourly?.relative_humidity_2m?.[h]:null;const res={temp:Math.round(cw.temperature),feel:feel!=null?Math.round(feel):null,wind:Math.round(cw.windspeed),desc:WMO[cw.weathercode]||'—',hum:hum??null};wxC[city]={ts:now,d:res};return res;}catch{return null;}}
 function wxHTML(w){if(!w)return'<div class="wx-err">📡 Hava verisi alınamadı</div>';const ps=w.desc.split(' ');return`<div class="wx-card"><span class="wx-icon">${ps[0]}</span><span class="wx-temp">${w.temp}°</span><div class="wx-right"><div class="wx-desc">${ps.slice(1).join(' ')}</div><div class="wx-details">${w.feel!=null?`<span>🌡️ Hissedilen ${w.feel}°</span>`:''} ${w.hum!=null?`<span>💧 %${w.hum}</span>`:''}<span>💨 ${w.wind}km/s</span></div></div></div>`;}
 
 // Modal
 const ov=document.getElementById('ov');
 let modalOpener=null;
+function updateNoteCount(inputId,countId){const field=document.getElementById(inputId),hint=document.getElementById(countId),max=Number(field.maxLength);hint.textContent=field.value.length+' / '+max+(max>80?' karakter':'');hint.classList.toggle('near',field.value.length>=max*0.9);}
+[['nt','ntCount'],['nc','ncCount'],['eTitle','eTitleCount'],['eContent','eContentCount']].forEach(([inputId,countId])=>{document.getElementById(inputId).addEventListener('input',()=>updateNoteCount(inputId,countId));});
 function resetAddForm(){
   document.getElementById('nt').value='';document.getElementById('nc').value='';
+  updateNoteCount('nt','ntCount');updateNoteCount('nc','ncCount');
   selStar=0;selColor='';
   setStars('newStars',0);
   document.getElementById('starLabel').textContent='Puan ver';
@@ -1307,8 +1394,9 @@ function openModal(city,bolge,opts){
   if(!(opts&&opts.add))document.getElementById('mname').focus({preventScroll:true});
 }
 
-function onCityGuideReady(content) {
-    document.getElementById('aiGuideContent').innerHTML = content;
+function onCityGuideReady(content, city) {
+    if(city!==curCity)return;
+    document.getElementById('aiGuideContent').textContent = content;
 }
 
 function closeModal(){
@@ -1509,7 +1597,7 @@ function dsCall(method,args){
     const bridge=window.Android;
     if(!bridge||typeof bridge[method]!=='function'){reject(new Error('Bridge unavailable'));return;}
     const id='ds-'+Date.now()+'-'+Math.random().toString(36).slice(2);
-    const timer=setTimeout(()=>{dsPending.delete(id);reject(new Error('Timed out'));},15000);
+    const timer=setTimeout(()=>{dsPending.delete(id);reject(new Error('Timed out'));},method==='importRoomFirst'?60000:15000);
     dsPending.set(id,{resolve,reject,timer});
     try{bridge[method](...args,id);}
     catch(e){clearTimeout(timer);dsPending.delete(id);reject(new Error('Bridge unavailable'));}
@@ -1750,8 +1838,10 @@ function mirrorNewNoteToRoom(city,note){
 // sv() turns the page's in-place edits into one Room request per changed note, and a note is
 // shown as saved only after native reports the committed transaction. Console: codes and counts only.
 let rfStore=null,rfFailed=false,rfDurability='',rfPreflight=null,rfBusy=false,rfStatusInfo=null;
+let rfImportBusy=false;
 window.onRoomFirstSnapshot=dsSettle;
 window.onRoomFirstSwitch=dsSettle;
+window.onRoomFirstImport=dsSettle;
 const rfSig=n=>JSON.stringify([n.title||'',n.content||'',n.category||'Genel',n.star||0,n.color||'',!!n.fav,n.date||'',n.isAI===undefined||n.isAI===null?null:!!n.isAI]);
 function rfBadge(city,id){const s=rfStore&&rfStore.statusOf(city,id);return s?`<span class="rf-badge rf-${s.status}">${esc(s.text)}</span>`:'';}
 // Replaces the "saved" toast the calling handler shows right after sv().
@@ -1763,22 +1853,23 @@ function rfShowAll(){
   rfRefresh();
 }
 function rfCommitFromDB(){
-  if(!rfStore||!rfStore.isReady()){
-    DB={};
-    rfHoldToast(rfFailed?'⚠️ Room okunamadı; değişiklik kaydedilmedi':'Notlar Room’dan yükleniyor; değişiklik kaydedilmedi');
+  if(rfFailed||!rfStore||!rfStore.isReady()){
+    DB=rfStore&&rfStore.isReady()?rfStore.view():{};
+    rfHoldToast(rfFailed?'⚠️ Bekleyen yazılar okunamadı; değişiklik kaydedilmedi':'Notlar Room’dan yükleniyor; değişiklik kaydedilmedi');
     return;
   }
-  const before=rfStore.view(),seen=new Set();let saving=0,deleting=0;
+  const before=rfStore.view(),seen=new Set();let saving=0,deleting=0,failed=0;
   Object.keys(DB).forEach(city=>(Array.isArray(DB[city])?DB[city]:[]).forEach(n=>{
     seen.add(RoomFirst.keyOf(city,n.id));
     const old=(before[city]||[]).find(o=>NoteIds.sameId(o.id,n.id));
-    if((!old||rfSig(old)!==rfSig(n))&&rfStore.save(city,n))saving++;
+    if(!old||rfSig(old)!==rfSig(n)){if(rfStore.save(city,n))saving++;else failed++;}
   }));
   Object.keys(before).forEach(city=>before[city].forEach(n=>{
-    if(!seen.has(RoomFirst.keyOf(city,n.id))&&rfStore.remove(city,n.id))deleting++;
+    if(!seen.has(RoomFirst.keyOf(city,n.id))){if(rfStore.remove(city,n.id))deleting++;else failed++;}
   }));
   DB=rfStore.view();
-  if(saving||deleting)rfHoldToast(deleting&&!saving?RoomFirst.STATUS_TEXT.deleting:RoomFirst.STATUS_TEXT.saving);
+  if(failed)rfHoldToast(RoomFirst.STATUS_TEXT.error);
+  else if(saving||deleting)rfHoldToast(deleting&&!saving?RoomFirst.STATUS_TEXT.deleting:RoomFirst.STATUS_TEXT.saving);
   rfRefresh();
 }
 window.onRoomFirstResult=function(requestId,result,error){
@@ -1792,7 +1883,25 @@ window.onRoomFirstResult=function(requestId,result,error){
 async function rfStart(){
   rfStore=RoomFirst.createStore({
     send:(payload,id)=>window.Android.writeRoomFirst(payload,id),
-    storage:{get:k=>localStorage.getItem(k),set:(k,v)=>localStorage.setItem(k,v)},
+    storage:{
+      get:k=>{
+        const reply=JSON.parse(window.Android.readRoomFirstOutbox());
+        if(!reply.ok)throw new Error('Native outbox unreadable');
+        const legacy=localStorage.getItem(k),native=reply.body;
+        if(legacy&&legacy!=='[]'){
+          if(native&&native!=='[]'&&native!==legacy)throw new Error('Conflicting Room outboxes');
+          if(!native||native==='[]'){
+            if(!window.Android.writeRoomFirstOutbox(legacy))throw new Error('Outbox migration failed');
+          }
+          localStorage.removeItem(k);
+          return legacy;
+        }
+        return native;
+      },
+      set:(k,v)=>{
+        if(!window.Android.writeRoomFirstOutbox(v))throw new Error('Native outbox write failed');
+      }
+    },
     newId:()=>'rf-'+Date.now()+'-'+Math.random().toString(36).slice(2),
     sortValue:NoteIds.sortValue
   });
@@ -1801,8 +1910,13 @@ async function rfStart(){
     const snap=await dsCall('readRoomFirst',[]);
     rfStore.hydrate(snap);
     rfDurability=`${snap.journalMode} / synchronous=${snap.synchronous}`;
-    const resent=rfStore.resume();
-    console.info('[RoomFirst] read active='+snap.active+' tombstones='+snap.tombstones+' resent='+resent);
+    try{
+      const resent=rfStore.resume();
+      console.info('[RoomFirst] read active='+snap.active+' tombstones='+snap.tombstones+' resent='+resent);
+    }catch(e){
+      rfFailed=true;console.info('[RoomFirst] pending writes unavailable: '+e.message);
+      toast('⚠️ Bekleyen yazılar okunamadı; yeni değişiklikler engellendi.');
+    }
     rfShowAll();
   }catch(e){
     rfFailed=true;console.info('[RoomFirst] read failed: '+e.message);
@@ -1811,10 +1925,11 @@ async function rfStart(){
 }
 function rfRefresh(){
   if(RF_MODE){
-    const bar=document.getElementById('rfBar'),n=rfStore?rfStore.pendingCount():0;
-    bar.hidden=false;bar.classList.toggle('err',rfFailed);document.body.classList.add('rf-on');
-    bar.textContent=rfFailed?'Room ana kaynak: Room okunamadı, notlar gösterilmiyor':
+    const bar=document.getElementById('rfBar'),n=rfStore?rfStore.pendingCount():0,errors=rfStore?rfStore.errorCount():0;
+    bar.hidden=false;bar.classList.toggle('err',rfFailed||!!errors);document.body.classList.add('rf-on');
+    bar.textContent=rfFailed?(rfStore&&rfStore.isReady()?'Room ana kaynak: bekleyen yazılar okunamadı; yeni kayıt engellendi':'Room ana kaynak: Room okunamadı, notlar gösterilmiyor'):
       !rfStore||!rfStore.isReady()?'Room ana kaynak: notlar yükleniyor…':
+      errors?`Room ana kaynak: ${errors} not kaydedilemedi`:
       n?`Room ana kaynak: ${n} not kaydediliyor…`:'Room ana kaynak: değişiklikler Room’a kaydedildi';
   }
   rfRenderCard();
@@ -2034,7 +2149,7 @@ function renderFavs(){
     </div></div>`).join('');
 }
 let editOpener=null;
-function openEdit(city,id){const n=DB[city]?.find(n=>NoteIds.sameId(n.id,id));if(!n)return;editingCity=city;editingId=id;editOpener=document.activeElement;document.getElementById('eTitle').value=n.title;document.getElementById('eContent').value=n.content||'';setStars('editStars',n.star||0);document.getElementById('editOv').classList.add('open');document.getElementById('editTitle').focus();}
+function openEdit(city,id){const n=DB[city]?.find(n=>NoteIds.sameId(n.id,id));if(!n)return;editingCity=city;editingId=id;editOpener=document.activeElement;document.getElementById('eTitle').value=n.title;document.getElementById('eContent').value=n.content||'';updateNoteCount('eTitle','eTitleCount');updateNoteCount('eContent','eContentCount');setStars('editStars',n.star||0);document.getElementById('editOv').classList.add('open');document.getElementById('editTitle').focus();}
 function saveEdit(){const n=DB[editingCity]?.find(n=>NoteIds.sameId(n.id,editingId));if(!n)return;n.title=document.getElementById('eTitle').value.trim()||n.title;n.content=document.getElementById('eContent').value.trim();sv();mirrorNewNoteToRoom(editingCity,n);renderNotes();updateSum();closeEdit();toast('Not güncellendi ✓');}
 function closeEdit(){document.getElementById('editOv').classList.remove('open');editingCity=null;editingId=null;if(editOpener&&document.body.contains(editOpener))editOpener.focus({preventScroll:true});else if(document.getElementById('ov').classList.contains('open'))document.getElementById('mname').focus({preventScroll:true});editOpener=null;}
 document.getElementById('editOv').addEventListener('click',e=>{if(e.target===document.getElementById('editOv'))closeEdit();});
@@ -2052,8 +2167,8 @@ function shareNote(city, id) {
 function renderNotes(){
   const nl=document.getElementById('nl'),nb=document.getElementById('nb');
   renderCityMeta();
-  const ns=(curCity&&DB[curCity])||[];nb.textContent=ns.length;
-  if(!ns.length){nl.innerHTML='<div class="nemp">Henüz not yok.<br>“Not ekle” ile ilk notunu ekle.</div>';return;}
+  const all=(curCity&&DB[curCity])||[],ns=curCity?searchMatched(curCity):[];nb.textContent=ns.length;
+  if(!ns.length){nl.innerHTML=all.length?'<div class="nemp">Filtrelere uyan not yok.</div>':'<div class="nemp">Henüz not yok.<br>“Not ekle” ile ilk notunu ekle.</div>';return;}
   nl.innerHTML=[...ns].reverse().map(n=>`<div class="ni" style="border-left-color:${n.color||BOLGE_INFO[curBolge||'ic'].c};background:${n.color?n.color+'22':''}">
     <div class="nih"><div class="nit">${n.isAI ? '<span title="AI Özeti" style="margin-right:4px">✨</span>' : ''}${CEMOJI[n.category]||'📝'} ${esc(n.title)}${n.fav?' ⭐':''}${RF_MODE?rfBadge(curCity,n.id):''}</div><div class="nid">${n.date}</div></div>
     ${n.content?`<div class="nic">${esc(n.content)}</div>`:''}
@@ -2065,18 +2180,30 @@ function renderNotes(){
     </div></div>`).join('');
 }
 
-document.getElementById('schIn').oninput=e=>{q=e.target.value.toLowerCase().trim();updateSum();};
+document.getElementById('schIn').oninput=e=>{q=e.target.value.trim();updateSum();if(curCity)renderNotes();};
+function searchFilters(){return{query:q,city:document.getElementById('searchCity').value,tag:document.getElementById('searchTag').value,from:document.getElementById('searchFrom').value,to:document.getElementById('searchTo').value,minStar:Number(document.getElementById('searchStar').value)};}
+function searchMatched(city){const f=searchFilters();return(DB[city]||[]).filter(n=>NoteSearch.matches(city,n,f));}
+function refreshSearchOptions(){
+  const cityEl=document.getElementById('searchCity'),tagEl=document.getElementById('searchTag'),city=cityEl.value,tag=tagEl.value;
+  const cities=Object.keys(DB).filter(c=>Array.isArray(DB[c])&&DB[c].length).sort((a,b)=>a.localeCompare(b,'tr'));
+  const tags=[...new Set(cities.flatMap(c=>DB[c].flatMap(n=>NoteSearch.tags(n))))].sort((a,b)=>a.localeCompare(b,'tr'));
+  cityEl.replaceChildren(new Option('Tüm şehirler',''),...cities.map(c=>new Option(c,c)));
+  tagEl.replaceChildren(new Option('Tüm etiketler',''),...tags.map(t=>new Option('#'+t,t)));
+  cityEl.value=cities.includes(city)?city:'';tagEl.value=tags.includes(tag)?tag:'';
+}
+['searchCity','searchTag','searchFrom','searchTo','searchStar'].forEach(id=>document.getElementById(id).addEventListener('change',()=>{updateSum();if(curCity)renderNotes();}));
+document.getElementById('searchClear').onclick=()=>{document.getElementById('schIn').value='';q='';['searchCity','searchTag','searchFrom','searchTo'].forEach(id=>document.getElementById(id).value='');document.getElementById('searchStar').value='0';updateSum();if(curCity)renderNotes();};
 function updateSum(){
   const sl=document.getElementById('sl'),ab=document.getElementById('ab');
-  let cs=Object.keys(DB).filter(c=>DB[c]&&DB[c].length>0);
-  if(q)cs=cs.filter(c=>c.toLowerCase().includes(q)||DB[c].some(n=>(n.title||'').toLowerCase().includes(q)||(n.content||'').toLowerCase().includes(q)||(n.category||'').toLowerCase().includes(q)));
+  refreshSearchOptions();
+  const matched={};let cs=Object.keys(DB).filter(c=>{matched[c]=searchMatched(c);return matched[c].length>0;});
   if(sortMode==='alpha')cs.sort((a,b)=>a.localeCompare(b,'tr'));
-  else if(sortMode==='star')cs.sort((a,b)=>{const as=DB[a].reduce((s,n)=>s+(n.star||0),0)/DB[a].length,bs=DB[b].reduce((s,n)=>s+(n.star||0),0)/DB[b].length;return bs-as;});
-  else if(sortMode==='fav')cs=cs.filter(c=>DB[c].some(n=>n.fav)).sort((a,b)=>a.localeCompare(b,'tr'));
-  else cs.sort((a,b)=>DB[b].length-DB[a].length);
+  else if(sortMode==='star')cs.sort((a,b)=>{const as=matched[a].reduce((s,n)=>s+(n.star||0),0)/matched[a].length,bs=matched[b].reduce((s,n)=>s+(n.star||0),0)/matched[b].length;return bs-as;});
+  else if(sortMode==='fav')cs=cs.filter(c=>matched[c].some(n=>n.fav)).sort((a,b)=>a.localeCompare(b,'tr'));
+  else cs.sort((a,b)=>matched[b].length-matched[a].length);
   ab.textContent=cs.length;
-  if(!cs.length){sl.innerHTML=q?'<div class="emp">Eşleşen şehir yok.</div>':'<div class="emp"><span class="eico" aria-hidden="true">🗺️</span>Henüz notlu şehir yok.<br>Haritada bir şehre dokunun ya da “Not Ekle”yi kullanın.<br><button type="button" class="city-btn primary" style="margin-top:10px" onclick="openPicker(this)"><span aria-hidden="true">＋</span> Not Ekle</button></div>';return;}
-  sl.innerHTML=cs.map(c=>{const b=IL_BOLGE[c]||'ic',info=BOLGE_INFO[b]||BOLGE_INFO.ic;const avg=DB[c].length?(DB[c].reduce((a,n)=>a+(n.star||0),0)/DB[c].length).toFixed(1):null;return`<button type="button" class="cc" style="border-left-color:${info.c}" onclick="openModal('${esc(c)}','${b}')" aria-label="${esc(c+', '+info.l+', '+DB[c].length+' not'+(avg?', ortalama puan '+avg:''))}"><span class="ccl"><span><span class="cn">${esc(c)}${DB[c].some(n=>n.fav)?' ⭐':''}</span><span class="cr">${info.l}</span></span></span><span class="cct"><span class="cnum">${DB[c].length}</span><span class="clb">${avg?'★'+avg:'not'}</span></span></button>`;}).join('');
+  if(!cs.length){sl.innerHTML=Object.keys(DB).some(c=>DB[c]&&DB[c].length)?'<div class="emp">Filtrelere uyan not yok.</div>':'<div class="emp"><span class="eico" aria-hidden="true">🗺️</span>Henüz notlu şehir yok.<br>Haritada bir şehre dokunun ya da “Not Ekle”yi kullanın.<br><button type="button" class="city-btn primary" style="margin-top:10px" onclick="openPicker(this)"><span aria-hidden="true">＋</span> Not Ekle</button></div>';return;}
+  sl.innerHTML=cs.map(c=>{const b=IL_BOLGE[c]||'ic',info=BOLGE_INFO[b]||BOLGE_INFO.ic;const ns=matched[c],avg=ns.length?(ns.reduce((a,n)=>a+(n.star||0),0)/ns.length).toFixed(1):null;return`<button type="button" class="cc" style="border-left-color:${info.c}" onclick="openModal('${esc(c)}','${b}')" aria-label="${esc(c+', '+info.l+', '+ns.length+' not'+(avg?', ortalama puan '+avg:''))}"><span class="ccl"><span><span class="cn">${esc(c)}${ns.some(n=>n.fav)?' ⭐':''}</span><span class="cr">${info.l}</span></span></span><span class="cct"><span class="cnum">${ns.length}</span><span class="clb">${avg?'★'+avg:'not'}</span></span></button>`;}).join('');
 }
 
 function renderStats(){
@@ -2147,6 +2274,10 @@ function importJSON(inp){
 }
 function previewImport(text,name){
   settleDelete();
+  if(RF_MODE&&(rfImportBusy||rfFailed||!rfStore||!rfStore.isReady()||rfStore.pendingCount())){
+    fileStatus('importStatus','⚠️ Bekleyen not kayıtları tamamlanınca içe aktarın.','error');
+    return;
+  }
   const p=NotesFile.parse(text);
   if(!p.ok){fileStatus('importStatus','⚠️ '+p.error+' Notlarınız değişmedi.','error');toast('⚠️ '+p.error);return;}
   const pv=NotesFile.preview(DB,p.data);
@@ -2154,7 +2285,7 @@ function previewImport(text,name){
   document.getElementById('impConfirm').textContent='İçe aktar';
   document.getElementById('impText').textContent=`“${name||'Seçilen dosya'}”: ${p.cities} şehirde ${p.notes} not.`;
   document.getElementById('impDetail').textContent=pv.added
-    ?`${pv.added} yeni not eklenecek.${pv.skipped?` ${pv.skipped} not zaten kayıtlı olduğu için atlanacak.`:''} Mevcut ${NotesFile.count(DB)} notunuz silinmez ve değiştirilmez.`
+    ?`${RF_MODE?'En fazla ':''}${pv.added} yeni not eklenecek.${pv.skipped?` ${pv.skipped} not zaten kayıtlı olduğu için atlanacak.`:''} ${RF_MODE?'Room’da silinmiş notlar da atlanır. ':''}Mevcut ${NotesFile.count(DB)} notunuz silinmez ve değiştirilmez.`
     :'Bu dosyadaki notların hepsi zaten kayıtlı; eklenecek yeni not yok. Notlarınız değişmedi.';
   document.getElementById('impTitle').textContent=pv.added?'Yedek içe aktarılsın mı?':'Yedek kontrol edildi';
   document.getElementById('impConfirm').hidden=!pv.added;
@@ -2171,6 +2302,7 @@ function closeImport(){
 // Same merge as before (NoteIds.mergeNotes); Room changes only after the new notes are saved.
 // On Android the notes are staged on disk first: a successful setItem is not yet on disk.
 function applyImport(d){
+  if(RF_MODE)return{ok:false,error:'Room ana kaynak denemesinde içe aktarma kapalı.'};
   settleDelete();
   const before=JSON.stringify(storedDB()),added=[];
   const cnt=NoteIds.mergeNotes(DB,d,(city,note)=>added.push([city,note]));
@@ -2234,6 +2366,20 @@ document.getElementById('impRoomRetry').onclick=()=>{
 };
 function confirmImport(){
   const d=pendingImport;closeImport();if(!d)return;
+  if(RF_MODE){
+    const statusId=impStatusId;
+    if(rfImportBusy||rfFailed||!rfStore||!rfStore.isReady()||rfStore.pendingCount()){
+      fileStatus(impStatusId,'⚠️ Bekleyen not kayıtları tamamlanınca içe aktarın.','error');return;
+    }
+    rfImportBusy=true;
+    fileStatus(statusId,'Notlar Room’a ekleniyor; işlem tamamlanana kadar bekleyin.');
+    dsCall('importRoomFirst',[JSON.stringify(d)]).then(out=>{
+      fileStatus(statusId,`✅ ${out.inserted} not eklendi; ${out.skipped} mevcut veya silinmiş not atlandı.`,'ok');
+      rfStart();
+    }).catch(e=>fileStatus(statusId,'⚠️ İçe aktarma sonucu doğrulanamadı; notları yeniden açıp kontrol edin.','error'))
+      .finally(()=>{rfImportBusy=false;});
+    return;
+  }
   const r=applyImport(d);
   // A Room warning raised during the import already says the notes were saved; it must stay visible.
   if(r.ok&&roomRestoreRetry)return;
@@ -2277,7 +2423,7 @@ function cloudRender(){
     const last=Math.max(s.lastBackupAt||0,...cloudBackups.map(b=>b.createdAt||0));
     acct.textContent=`Oturum açık: ${s.email||'Google hesabı'}${s.emulator?' (test emülatörü)':''}`+(last?` · Son yedek: ${CloudBackup.when(last)}`:'');
   }
-  show('cloudSignIn',ready&&!signed);show('cloudBackupNow',signed);show('cloudRefresh',signed);show('cloudSignOut',signed);show('cloudAutoRow',signed);
+  show('cloudSignIn',ready&&!signed);show('cloudBackupNow',signed);show('cloudRefresh',signed);show('cloudSignOut',signed);show('cloudAutoRow',signed&&!RF_MODE);show('cloudRoomNotice',RF_MODE);
   document.getElementById('cloudAuto').checked=!!s.auto;
   ['cloudSignIn','cloudBackupNow','cloudRefresh','cloudSignOut'].forEach(id=>{document.getElementById(id).disabled=busy;});
   const ul=document.getElementById('cloudList');ul.innerHTML='';
@@ -2296,7 +2442,12 @@ function cloudFetch(backupId){
   cloudCall('fetch',{},id=>window.Android.cloudFetchBackup(backupId,id));
 }
 // Stored text, as for the JSON file: exactly what is on the phone, never a half-edited copy.
-function cloudBackupStart(auto){cloudCall('backup',{auto},id=>window.Android.cloudBackup(localStorage.getItem(NKEY)||'{}',auto,id));}
+function cloudBackupStart(auto){
+  if(RF_MODE&&(rfFailed||!rfStore||!rfStore.isReady()||rfStore.pendingCount())){
+    cloudMsg('Bekleyen not kayıtları tamamlanınca yedekleyin.','error');return;
+  }
+  cloudCall('backup',{auto},id=>window.Android.cloudBackup(RF_MODE?'{}':localStorage.getItem(NKEY)||'{}',auto,id));
+}
 window.cloudAutoBackup=function(){
   if(!cloudOn()||RF_MODE||cloudPending.size)return;
   cloudRefreshState();
@@ -2372,7 +2523,7 @@ function renderCloudRestore(){
   document.getElementById('impTitle').textContent=pv.added?'Bulut yedeği geri yüklensin mi?':'Bulut yedeği kontrol edildi';
   document.getElementById('impText').textContent=`${CloudBackup.when(c.meta.createdAt)} tarihli yedek: ${c.meta.cityCount} şehirde ${c.meta.noteCount} not. Yedeğin bütünlüğü doğrulandı.`;
   document.getElementById('impDetail').textContent=(pv.added
-    ?`${pv.added} yeni not eklenecek.${pv.skipped?` ${pv.skipped} not bu telefonda zaten olduğu için atlanacak; telefondaki hâli korunur.`:''} Mevcut ${NotesFile.count(DB)} notunuz silinmez ve değiştirilmez.`
+    ?`${RF_MODE?'En fazla ':''}${pv.added} yeni not eklenecek.${pv.skipped?` ${pv.skipped} not bu telefonda zaten olduğu için atlanacak; telefondaki hâli korunur.`:''} ${RF_MODE?'Room’da silinmiş notlar da atlanır. ':''}Mevcut ${NotesFile.count(DB)} notunuz silinmez ve değiştirilmez.`
     :'Eklenecek yeni not yok; yedekteki notlar telefonda zaten var veya bu telefonda silinmiş. Notlarınız değişmedi.')
     +(c.deleted?` Yedekteki ${c.deleted} silme kaydı bu telefondaki notları silmez.`:'');
   document.getElementById('impDeletedRow').hidden=!plan.held;
@@ -2386,12 +2537,11 @@ cloudRefreshState();cloudRender();
 if(cloudState&&cloudState.signedIn)cloudList(false);
 // Covers a backup missed because the app was closed or killed while it was due.
 setTimeout(()=>window.cloudAutoBackup(),20000);
-function emailNotes(){const cs=Object.keys(DB).filter(c=>DB[c]&&DB[c].length);if(!cs.length){toast('Gönderilecek not yok.');return;}let body='TÜRKİYE ŞEHİR NOTLARIM\n\n';cs.forEach(c=>{body+=`== ${c} ==\n`;DB[c].forEach(n=>{body+=`[${n.category}] ${n.title}\n${n.content||''}\n${n.date}\n\n`;});});window.location.href=`mailto:?subject=Türkiye Şehir Notlarım&body=${encodeURIComponent(body)}`;}
 function clearAll(){if(!confirm('Tüm notlar silinecek. Emin misiniz?'))return;settleDelete();const oldDB=DB;DB={};sv();Object.entries(oldDB).forEach(([city,notes])=>{if(Array.isArray(notes))notes.forEach(note=>mirrorDeletedNoteToRoom(city,note.id));});updateStyles();updateSum();toast('Tüm notlar yerel olarak silindi');}
 
 const offBar=document.getElementById('offlineBar');
-window.addEventListener('online',()=>offBar.classList.remove('show'));
-window.addEventListener('offline',()=>offBar.classList.add('show'));
+window.addEventListener('online',()=>{offBar.classList.remove('show');if(lmap?._addTile)lmap._addTile();});
+window.addEventListener('offline',()=>{offBar.classList.add('show');if(lmap?._addTile)lmap._addTile();});
 if(!navigator.onLine)offBar.classList.add('show');
 
 let dP=null;const banner=document.getElementById('pwaBanner');

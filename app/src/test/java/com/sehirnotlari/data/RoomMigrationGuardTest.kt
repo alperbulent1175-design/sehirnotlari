@@ -129,7 +129,8 @@ class RoomMigrationGuardTest {
         val staged = apply.indexOf("if(restore&&!restore.recorded){DB=JSON.parse(before);")
         assertTrue(staged in apply.indexOf("const restore=recordRoomRestore(added);") until apply.indexOf("try{sv();}"))
         assertTrue(apply.substringAfter("if(restore&&!restore.recorded){").substringBefore("}").contains("return{ok:false,"))
-        assertTrue(confirm.indexOf("if(r.ok&&r.pending){") in confirm.indexOf("if(r.ok&&roomRestoreRetry)return;") until confirm.indexOf("✅"))
+        val legacyConfirm = confirm.substringAfter("const r=applyImport(d);")
+        assertTrue(legacyConfirm.indexOf("if(r.ok&&r.pending){") in legacyConfirm.indexOf("if(r.ok&&roomRestoreRetry)return;") until legacyConfirm.indexOf("✅"))
         val result = html.substringAfter("window.onRoomRestoreResult=function(requestId,result,error){").substringBefore("\n};")
         assertTrue(result.indexOf("not içe aktarıldı") > result.indexOf("if(error||!result){roomRestoreFailed("))
         // The import and its startup resume (the same notes, from the staged copy) are the only merges.
@@ -246,9 +247,12 @@ class RoomMigrationGuardTest {
     @Test
     fun aiFeaturesAreOffWithoutAKeyAndNeverShowRawErrors() {
         val activity = sourceFile("src/main/java/com/sehirnotlari/MainActivity.kt").readText()
-        assertTrue(activity.contains("private val aiEnabled = BuildConfig.GEMINI_API_KEY.isNotBlank()"))
+        assertTrue(activity.contains("private val aiEnabled: Boolean get() = aiKeyStore.hasKey() || BuildConfig.GEMINI_API_KEY.isNotBlank()"))
+        val gradle = sourceFile("build.gradle.kts").readText()
+        assertTrue(gradle.substringAfter("defaultConfig {").substringBefore("buildTypes {").contains("buildConfigField(\"String\", \"GEMINI_API_KEY\", \"\\\"\\\"\")"))
+        assertTrue(gradle.substringAfter("debug {").substringBefore("release {").contains("buildConfigField(\"String\", \"GEMINI_API_KEY\", \"\\\"\$geminiApiKey\\\"\")"))
         assertTrue(activity.contains("fun aiAvailable(): Boolean = aiEnabled"))
-        listOf("fun startRecording()", "fun startMultiModalRecording()", "fun pickPDF(city: String)").forEach { name ->
+        listOf("fun startRecording()", "fun startMultiModalRecording()", "fun startPhotoAnalysis(city: String)", "fun pickPDF(city: String)").forEach { name ->
             val body = activity.substringAfter(name).substringBefore("@JavascriptInterface")
             assertTrue("$name is not gated", Regex("""^\s*\{\s*if \(refuseWithoutAi\(\)\) return""").containsMatchIn(body))
         }
@@ -256,7 +260,7 @@ class RoomMigrationGuardTest {
         assertTrue(guide.indexOf("if (!aiEnabled)") in 0 until guide.indexOf("generateContent"))
         assertFalse(guide.contains("e.message"))
         val html = sourceFile("src/main/assets/index.html").readText()
-        listOf("'pdfBtn').onclick", "'multiBtn').onclick", "'micBtn').onclick", "function pickPDF()").forEach { handler ->
+        listOf("'pdfBtn').onclick", "'photoBtn').onclick", "'multiBtn').onclick", "'micBtn').onclick", "function pickPDF()").forEach { handler ->
             assertTrue("$handler is not gated", html.substringAfter(handler).substringBefore("\n}").contains("aiOff()"))
         }
     }

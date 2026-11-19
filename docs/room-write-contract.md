@@ -1,5 +1,7 @@
 # Room ana kayıt sistemi: uygulanacak yazma sözleşmesi
 
+> Tarihsel taslak: Bu belgedeki bazı eksikler sonraki prototipte giderildi. Güncel üretim kararları için [room-production-readiness.md](room-production-readiness.md) okunmalıdır.
+
 ## Doğrulanan mevcut durum
 - `app/src/main/assets/index.html`: `DB` açılışta `localStorage` üzerinden yükleniyor; `sv()` bütün nesneyi yazıyor.
 - Yeni not, AI notu, yıldız, favori, düzenleme, silme, JSON içe aktarma, bulut geri yükleme ve tümünü temizleme `sv()` kullanıyor.
