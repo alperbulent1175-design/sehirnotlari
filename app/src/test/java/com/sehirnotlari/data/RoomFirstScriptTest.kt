@@ -174,9 +174,11 @@ class RoomFirstScriptTest {
         js("s.save('Bursa', note(7, 'hata alacak'))")
         js("var err = s.onResult(last().id, null, 'SQLiteFullException')")
         assertEquals("error", str("err.status"))
-        assertEquals("Kaydedilemedi; değişiklik uygulanmadı", str("err.notice"))
-        assertEquals("Ulu Cami", str("s.view().Bursa[0].title"))
+        assertEquals("Kayıt doğrulanamadı; değişiklikleri kontrol edin", str("err.notice"))
+        assertEquals("hata alacak", str("s.view().Bursa[0].title"))
         assertEquals(1, num("s.errorCount()"))
+        assertEquals(1, num("s.pendingCount()"))
+        assertEquals("inflight", str("JSON.parse(mem[RoomFirst.OUTBOX_KEY])[0].state"))
 
         js("s.save('Bursa', note(8, 'eski sürümden'))")
         js("var c = s.onResult(last().id, reply('CONFLICT', row('Bursa', 8, 'başka cihazdan', 250), false), null)")
@@ -188,10 +190,27 @@ class RoomFirstScriptTest {
         assertEquals("deleted", str("d.status"))
         assertEquals(1, num("s.view().Bursa.length"))
 
-        js("failSend = true; s.save('Bursa', note(7, 'köprü yok'))")
-        assertEquals("error", str("s.statusOf('Bursa', 7).status"))
-        assertEquals(0, num("s.pendingCount()"))
-        assertEquals("Ulu Cami", str("s.view().Bursa[0].title"))
+        js("failSend = true; var t = mk(); t.hydrate(snap([row('Bursa', 7, 'Ulu Cami', 100)])); t.save('Bursa', note(7, 'köprü yok'))")
+        assertEquals("error", str("t.statusOf('Bursa', 7).status"))
+        assertEquals(0, num("t.pendingCount()"))
+        assertEquals("Ulu Cami", str("t.view().Bursa[0].title"))
+    }
+
+    @Test
+    fun uncertainNativeFailureKeepsOriginalRequestForReplay() {
+        js("s.hydrate(snap([row('Bursa', 7, 'Eski', 100)])); s.save('Bursa', note(7, 'İlk')); var id = last().id; s.save('Bursa', note(7, 'Son'))")
+        js("s.onResult(id, null, 'reply lost')")
+        assertEquals(1, num("sent.length"))
+        assertEquals("Son", str("s.view().Bursa[0].title"))
+        assertEquals("inflight", str("JSON.parse(mem[RoomFirst.OUTBOX_KEY])[0].state"))
+        assertEquals("pending", str("JSON.parse(mem[RoomFirst.OUTBOX_KEY])[1].state"))
+        js("var t = mk(); t.hydrate(snap([row('Bursa', 7, 'Eski', 100)])); t.resume()")
+        assertEquals(2, num("sent.length"))
+        assertEquals("r1", str("last().id"))
+        js("t.onResult('r1', reply('COMMITTED', row('Bursa', 7, 'İlk', 101), true), null)")
+        assertEquals(3, num("sent.length"))
+        assertEquals("Son", str("last().p.note.title"))
+        assertEquals(101, num("last().p.base"))
     }
 
     @Test

@@ -15,7 +15,7 @@
     deleting: 'Siliniyor…',
     saved: 'Room’a kaydedildi',
     removed: 'Not silindi',
-    error: 'Kaydedilemedi; değişiklik uygulanmadı',
+    error: 'Kayıt doğrulanamadı; değişiklikleri kontrol edin',
     conflict: 'Not başka bir işlemle değişmiş; değişikliğiniz kaydedilmedi. Güncel hâli gösteriliyor.',
     deleted: 'Bu not silinmiş; geri getirilmez. Değişikliğiniz kaydedilmedi.'
   };
@@ -226,10 +226,17 @@
         if (key === undefined) return { unknown: true };
         delete byRequest[requestId];
         var e = notes[key], op = e.inflight, out = { key: key, op: op.op, roomChanged: false, ticket: null };
-        e.inflight = null;
         if (error || !result) {
           out.status = 'error';
+          // The native write may have committed even if its reply was lost. Keep the
+          // original request id and base ticket so a reload can safely replay it.
+          e.status = 'error';
+          writeOutbox();
+          out.notice = STATUS_TEXT.error;
+          out.followUp = false;
+          return out;
         } else {
+          e.inflight = null;
           applyRow(key, result.row);
           out.roomChanged = true;
           out.ticket = result.row ? result.row.ticket : null;
