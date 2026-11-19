@@ -36,8 +36,8 @@ android {
         applicationId = "com.sehirnotlari"
         minSdk = 24
         targetSdk = 37
-        versionCode = 8
-        versionName = "1.5-beta.3"
+        versionCode = 9
+        versionName = "1.5-beta.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GEMINI_API_KEY", "\"\"")

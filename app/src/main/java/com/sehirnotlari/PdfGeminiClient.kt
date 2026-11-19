@@ -8,6 +8,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
+import kotlin.io.encoding.Base64
 
 /** Streams a staged PDF to Gemini Files API, then summarizes by file URI. */
 class PdfGeminiClient(
@@ -16,6 +17,15 @@ class PdfGeminiClient(
 ) {
     fun summarize(file: File, prompt: String, onProgress: (Int) -> Unit = {}, onStage: (String) -> Unit = {}): String {
         require(file.length() in 1..PDF_LIMIT_BYTES) { "Invalid PDF size" }
+        if (file.length() <= INLINE_LIMIT_BYTES) {
+            onStage("summarizing")
+            return generate(
+                JSONObject().put("inline_data", JSONObject()
+                    .put("mime_type", "application/pdf")
+                    .put("data", Base64.encode(file.readBytes()))),
+                prompt,
+            )
+        }
         val uploadUrl = startUpload(file.length())
         val uploaded = upload(uploadUrl, file, onProgress)
         val metadata = uploaded.getJSONObject("file")
@@ -37,17 +47,27 @@ class PdfGeminiClient(
             if (state != "ACTIVE") throw IOException("PDF processing timed out")
             if (!uri.startsWith("https://generativelanguage.googleapis.com/")) throw IOException("Invalid file URI")
             onStage("summarizing")
-            val parts = JSONArray()
-                .put(JSONObject().put("file_data", JSONObject().put("mime_type", "application/pdf").put("file_uri", uri)))
-                .put(JSONObject().put("text", prompt))
-            val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("parts", parts)))
-            val response = request("POST", "/v1beta/models/gemini-3.8-flash:generateContent", body)
-            val answer = response.getJSONArray("candidates").getJSONObject(0)
-                .getJSONObject("content").getJSONArray("parts")
-            return (0 until answer.length()).joinToString("\n") { answer.getJSONObject(it).optString("text") }.trim()
+            return generate(
+                JSONObject().put("file_data", JSONObject().put("mime_type", "application/pdf").put("file_uri", uri)),
+                prompt,
+            )
         } finally {
             runCatching { request("DELETE", "/v1beta/$name") }
         }
+    }
+
+    private fun generate(document: JSONObject, prompt: String): String {
+        val parts = JSONArray().put(document).put(JSONObject().put("text", prompt))
+        val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("parts", parts)))
+        val response = request("POST", "/v1beta/models/$GEMINI_MODEL:generateContent", body)
+        val candidate = response.optJSONArray("candidates")?.optJSONObject(0)
+        val answer = candidate?.optJSONObject("content")?.optJSONArray("parts")
+        val text = if (answer == null) "" else (0 until answer.length()).mapNotNull { index ->
+            answer.optJSONObject(index)?.takeUnless { it.optBoolean("thought") }
+                ?.optString("text")?.takeIf { it.isNotBlank() }
+        }.joinToString("\n").trim()
+        if (text.isEmpty()) throw IOException("Gemini returned no PDF summary")
+        return text
     }
 
     private fun startUpload(size: Long): URL {
@@ -61,7 +81,7 @@ class PdfGeminiClient(
             connection.setRequestProperty("X-Goog-Upload-Header-Content-Type", "application/pdf")
             connection.setRequestProperty("Content-Type", "application/json")
             connection.outputStream.use { it.write("{\"file\":{\"display_name\":\"Şehir Notları PDF\"}}".toByteArray()) }
-            if (connection.responseCode !in 200..299) throw IOException("Upload start failed")
+            checkStatus(connection)
             val url = URL(connection.getHeaderField("X-Goog-Upload-URL") ?: throw IOException("Missing upload URL"))
             val expected = URI(baseUrl)
             if (url.protocol != expected.scheme || url.host != expected.host) throw IOException("Unexpected upload host")
@@ -122,8 +142,7 @@ class PdfGeminiClient(
     }
 
     private fun response(connection: HttpURLConnection): JSONObject {
-        if (connection.responseCode !in 200..299) throw IOException("Gemini request failed: HTTP ${connection.responseCode}")
-        if (connection.responseCode == 204) return JSONObject()
+        if (checkStatus(connection) == 204) return JSONObject()
         val bytes = connection.inputStream.use { input ->
             val output = ByteArrayOutputStream()
             val buffer = ByteArray(8192)
@@ -135,8 +154,17 @@ class PdfGeminiClient(
             }
             output.toByteArray()
         }
-        return JSONObject(String(bytes, Charsets.UTF_8))
+        return if (bytes.isEmpty()) JSONObject() else JSONObject(String(bytes, Charsets.UTF_8))
     }
 
-    companion object { const val PDF_LIMIT_BYTES = 30_000_000L }
+    private fun checkStatus(connection: HttpURLConnection): Int {
+        val status = connection.responseCode
+        if (status !in 200..299) throw IOException("Gemini request failed: HTTP $status")
+        return status
+    }
+
+    companion object {
+        const val PDF_LIMIT_BYTES = 30_000_000L
+        internal const val INLINE_LIMIT_BYTES = 5_000_000L
+    }
 }

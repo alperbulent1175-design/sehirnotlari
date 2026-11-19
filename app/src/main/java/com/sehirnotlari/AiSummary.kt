@@ -1,5 +1,7 @@
 package com.sehirnotlari
 
+internal const val GEMINI_MODEL = "gemini-3.5-flash-lite"
+
 /** A Gemini response is only offered as a note when it contains visible content. */
 data class AiSummary(val title: String, val content: String) {
     companion object {

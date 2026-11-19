@@ -635,9 +635,9 @@ body.undo-on .toast:not(.show){visibility:hidden}
     </div>
     <div class="set-list" role="group" aria-labelledby="aiTitle2">
       <button type="button" class="set-row" id="micBtn"><span class="set-ico" aria-hidden="true">🎤</span><span class="set-txt"><strong>Sesli not</strong><span>Konuşmanızı yapay zekâ ile metne çevirir</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
-      <button type="button" class="set-row" id="photoBtn"><span class="set-ico" aria-hidden="true">🖼️</span><span class="set-txt"><strong>Fotoğrafı yorumla</strong><span>Fotoğraf çekip yapay zekâdan not taslağı alın</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
+      <button type="button" class="set-row" id="photoBtn"><span class="set-ico" aria-hidden="true">🖼️</span><span class="set-txt"><strong>Fotoğrafı yorumla</strong><span>Fotoğraf çekin veya galeriden seçerek not taslağı alın</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
       <button type="button" class="set-row" id="multiBtn"><span class="set-ico" aria-hidden="true">📸</span><span class="set-txt"><strong>Akıllı analiz</strong><span>Fotoğraf ve sesinizden not oluşturur</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
-      <button type="button" class="set-row" id="pdfBtn"><span class="set-ico" aria-hidden="true">✨</span><span class="set-txt"><strong>PDF özeti</strong><span>Gemini 3.8 Flash ile özetler · PDF en fazla 30 MB</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
+      <button type="button" class="set-row" id="pdfBtn"><span class="set-ico" aria-hidden="true">✨</span><span class="set-txt"><strong>PDF özeti</strong><span>Gemini ile özetler · PDF en fazla 30 MB</span></span><span class="set-tag ai-off-tag" hidden>Kapalı</span></button>
     </div>
     <h3 class="set-h">Uygulama</h3>
     <div class="set-list">
@@ -1297,11 +1297,13 @@ function closeAIOv(){ document.getElementById('aiOv').classList.remove('open'); 
 function confirmAI(){
   const city = document.getElementById('aiCitySelect').value;
   if(!city || !pendingAI) return;
+  const content = document.getElementById('aiContent').value.trim();
+  if(!content){toast('Not içeriği boş olamaz.');return;}
   if(!DB[city]) DB[city] = [];
   const aiNote={
     id: NoteIds.nextNoteId(storedDB()),
     title: pendingAI.title,
-    content: pendingAI.content,
+    content,
     category: 'Genel',
     star: 0,
     color: '',

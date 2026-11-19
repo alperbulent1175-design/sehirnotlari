@@ -49,6 +49,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -65,8 +66,10 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebChromeClient
 import android.webkit.GeolocationPermissions
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
@@ -77,6 +80,7 @@ import com.google.ai.client.generativeai.type.SafetySetting
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.RequestOptions
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -86,7 +90,6 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
-import java.io.InputStream
 import java.util.TimeZone
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.runBlocking
@@ -106,22 +109,7 @@ private const val ROOM_FIRST_OFF = "Room-first mode is off"
 private const val AI_OFF_MESSAGE = "Yapay zekâ için Ayarlar'dan Gemini API anahtarı ekleyin."
 private const val AI_OFF_GUIDE = "Akıllı rehber için Gemini anahtarı ekleyin."
 private const val AI_GUIDE_FAILED = "Rehber şu an hazırlanamadı. Daha sonra yeniden deneyin."
-private const val AI_MEDIA_LIMIT = 20_000_000
-private const val GENERAL_AI_MODEL = "gemini-2.5-flash"
-private const val PDF_AI_MODEL = "gemini-3.8-flash"
-private const val PDF_INLINE_LIMIT = 5_000_000L
-
-private fun readLimitedAi(stream: InputStream): ByteArray {
-    val output = ByteArrayOutputStream()
-    val buffer = ByteArray(8192)
-    while (true) {
-        val count = stream.read(buffer)
-        if (count < 0) break
-        if (output.size() + count > AI_MEDIA_LIMIT) throw IOException("AI dosyası 20 MB sınırını aşıyor")
-        output.write(buffer, 0, count)
-    }
-    return output.toByteArray()
-}
+private const val PHOTO_MAX_EDGE = 1600
 
 class MainActivity : AppCompatActivity() {
 
@@ -150,15 +138,14 @@ class MainActivity : AppCompatActivity() {
     private var mediaRecorder: MediaRecorder? = null
     private var audioFile: File? = null
     private var photoFile: File? = null
-    private var photoUri: Uri? = null
-    @Volatile private var photoOnly = false
-    @Volatile private var photoCity = ""
+    private var photoCity: String? = null
+    private var cameraPending = false
 
     private val aiKeyStore by lazy { AiApiKeyStore(applicationContext) }
     private val aiEnabled: Boolean get() = aiKeyStore.hasKey() || BuildConfig.GEMINI_API_KEY.isNotBlank()
     private fun aiKey(): String = aiKeyStore.get() ?: BuildConfig.GEMINI_API_KEY.trim()
-    private fun aiModel(modelName: String = GENERAL_AI_MODEL): GenerativeModel = GenerativeModel(
-        modelName = modelName,
+    private fun aiModel(): GenerativeModel = GenerativeModel(
+        modelName = GEMINI_MODEL,
         apiKey = aiKey(),
         requestOptions = RequestOptions(timeout = kotlin.time.Duration.parse("2m"))
     )
@@ -200,23 +187,39 @@ class MainActivity : AppCompatActivity() {
 
     private val photoPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) takePhotoForMultiModal()
-        else webView.evaluateJavascript("onAIError('Kamera izni gerekli.')", null)
+        else {
+            photoCity = null
+            sendAiScript("onAIError('Kamera izni gerekli.')")
+        }
     }
 
     private val cameraLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (!cameraPending) return@registerForActivityResult
+        cameraPending = false
+        val city = photoCity
+        photoCity = null
         if (result.resultCode == RESULT_OK) {
-            if (photoOnly) {
-                photoOnly = false
-                analyzePhoto(photoCity)
+            if (city != null) {
+                val captured = photoFile
+                photoFile = null
+                if (captured != null) analyzePhoto(Uri.fromFile(captured), city, captured)
+                else sendAiScript("onAIError('Çekilen fotoğraf bulunamadı.')")
             } else {
                 startRecordingInternal()
                 webView.evaluateJavascript("toast('Fotoğraf alındı, şimdi konuşun...')", null)
             }
         } else {
-            photoOnly = false
             photoFile?.delete()
-            webView.evaluateJavascript("toast('Fotoğraf çekimi iptal edildi')", null)
+            photoFile = null
+            sendAiScript("toast('Fotoğraf çekimi iptal edildi')")
         }
+    }
+
+    private val photoPickerLauncher = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val city = photoCity
+        photoCity = null
+        if (city != null && uri != null) analyzePhoto(uri, city)
+        else if (city != null) sendAiScript("toast('Fotoğraf seçimi iptal edildi')")
     }
 
     private val pdfPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -240,9 +243,14 @@ class MainActivity : AppCompatActivity() {
     private val pendingExportFile by lazy { File(cacheDir, "notes-export.pending") }
     private var pageReady = false
     private var pendingFileScript: String? = null
+    private val pendingAiScripts = mutableListOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        selectedCityForPdf = savedInstanceState?.getString("selectedCityForPdf")
+        photoCity = savedInstanceState?.getString("photoCity")
+        cameraPending = savedInstanceState?.getBoolean("cameraPending") == true
+        photoFile = savedInstanceState?.getString("photoFile")?.let { File(cacheDir, it) }
         setContentView(R.layout.activity_main)
 
         createNotificationChannel()
@@ -272,6 +280,14 @@ class MainActivity : AppCompatActivity() {
         Reminders.restore(this)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("selectedCityForPdf", selectedCityForPdf)
+        outState.putString("photoCity", photoCity)
+        outState.putBoolean("cameraPending", cameraPending)
+        outState.putString("photoFile", photoFile?.name)
+    }
+
     // Leaving the app is the moment for the automatic backup; the page decides whether it is on.
     override fun onStop() {
         super.onStop()
@@ -286,12 +302,13 @@ class MainActivity : AppCompatActivity() {
     private fun extractTextFromPdf(uri: Uri) {
         Log.d("SehirNotlari", "PDF Analysis started")
         val cityName = selectedCityForPdf.orEmpty()
-        webView.evaluateJavascript("showLoading('PDF hazırlanıyor...')", null)
+        selectedCityForPdf = null
+        sendAiScript("showLoading('PDF hazırlanıyor...')")
         lifecycleScope.launch(Dispatchers.IO) {
             val staged = try { File.createTempFile("ai_pdf_", ".pdf", cacheDir) }
             catch (e: Exception) {
                 Log.e("SehirNotlari", "PDF staging failed error=${e.javaClass.simpleName}")
-                withContext(Dispatchers.Main) { webView.evaluateJavascript("onAIError('PDF hazırlanamadı.')", null) }
+                withContext(Dispatchers.Main) { sendAiScript("onAIError('PDF hazırlanamadı.')") }
                 return@launch
             }
             try {
@@ -322,21 +339,15 @@ class MainActivity : AppCompatActivity() {
                     Bilgi belirsizse bunu açıkça söyle. Belge geziyle ilgili değilse ana konusunu özetle.
                     Yanıt biçimi: BAŞLIK: [kısa başlık] İÇERİK: [özet].
                 """.trimIndent()
-                val response = if (staged.length() <= PDF_INLINE_LIMIT) {
-                    withContext(Dispatchers.Main) { webView.evaluateJavascript("onPdfStage('summarizing')", null) }
-                    aiModel(PDF_AI_MODEL).generateContent(content {
-                        blob("application/pdf", staged.readBytes())
-                        text(prompt)
-                    }).text
-                } else PdfGeminiClient(aiKey()).summarize(
+                val response = PdfGeminiClient(aiKey()).summarize(
                     staged, prompt,
-                    onProgress = { percent -> runOnUiThread { webView.evaluateJavascript("onPdfUploadProgress($percent)", null) } },
-                    onStage = { stage -> runOnUiThread { webView.evaluateJavascript("onPdfStage(${JSONObject.quote(stage)})", null) } },
+                    onProgress = { percent -> runOnUiThread { sendAiScript("onPdfUploadProgress($percent)") } },
+                    onStage = { stage -> runOnUiThread { sendAiScript("onPdfStage(${JSONObject.quote(stage)})") } },
                 )
                 val summary = AiSummary.parse(response, "AI Özeti")
 
                 withContext(Dispatchers.Main) {
-                    webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(summary.title)}, ${JSONObject.quote(summary.content)}, ${JSONObject.quote(cityName)})", null)
+                    sendAiScript("onAISummaryReady(${JSONObject.quote(summary.title)}, ${JSONObject.quote(summary.content)}, ${JSONObject.quote(cityName)})")
                 }
             } catch (e: Exception) {
                 Log.e("SehirNotlari", "PDF Analysis failed error=${e.javaClass.simpleName}")
@@ -345,10 +356,12 @@ class MainActivity : AppCompatActivity() {
                         "PDF en fazla 30 MB olmalı ve geçerli bir PDF dosyası seçilmeli."
                     else if (e is IOException && e.message == "Gemini request failed: HTTP 429")
                         "Gemini kullanım sınırına ulaşıldı; AI Studio kotanızı kontrol edin."
+                    else if (e is IOException && e.message == "Gemini request failed: HTTP 503")
+                        "Gemini şu anda yanıt veremiyor. Biraz sonra yeniden deneyin."
                     else if (e is IOException && e.message in listOf("Gemini request failed: HTTP 401", "Gemini request failed: HTTP 403"))
                         "Gemini anahtarını ve erişim izinlerini kontrol edin."
                     else "PDF işlenemedi. Dosyayı ve bağlantınızı kontrol edin."
-                    webView.evaluateJavascript("onAIError(${JSONObject.quote(message)})", null)
+                    sendAiScript("onAIError(${JSONObject.quote(message)})")
                 }
             } finally { staged.delete() }
         }
@@ -356,42 +369,93 @@ class MainActivity : AppCompatActivity() {
 
     private fun takePhotoForMultiModal() {
         try {
-            photoFile = File.createTempFile("temp_photo", ".jpg", cacheDir)
-            val captureUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", photoFile!!)
-            photoUri = captureUri
+            val captured = File.createTempFile("temp_photo", ".jpg", cacheDir)
+            photoFile = captured
+            val captureUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", captured)
             val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
                 putExtra(MediaStore.EXTRA_OUTPUT, captureUri)
                 clipData = ClipData.newUri(contentResolver, "photo", captureUri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             }
+            cameraPending = true
             cameraLauncher.launch(intent)
         } catch (e: Exception) {
-            photoOnly = false
+            cameraPending = false
+            photoCity = null
             photoFile?.delete()
+            photoFile = null
             Log.e("SehirNotlari", "Photo capture failed error=${e.javaClass.simpleName}")
-            webView.evaluateJavascript("onAIError('Kamera açılamadı.')", null)
+            sendAiScript("onAIError('Kamera açılamadı.')")
         }
     }
 
-    private fun analyzePhoto(city: String) {
-        webView.evaluateJavascript("showLoading('Fotoğraf yorumlanıyor...')", null)
-        val file = photoFile
+    private fun sendAiScript(script: String) {
+        if (pageReady) webView.evaluateJavascript(script, null) else pendingAiScripts.add(script)
+    }
+
+    private fun decodeAnalysisPhoto(uri: Uri, captured: File?): Bitmap {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val source = if (captured != null) ImageDecoder.createSource(captured)
+            else ImageDecoder.createSource(contentResolver, uri)
+            return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                val width = info.size.width
+                val height = info.size.height
+                val longestEdge = maxOf(width, height)
+                if (longestEdge > PHOTO_MAX_EDGE) {
+                    decoder.setTargetSize(
+                        (width.toLong() * PHOTO_MAX_EDGE / longestEdge).toInt().coerceAtLeast(1),
+                        (height.toLong() * PHOTO_MAX_EDGE / longestEdge).toInt().coerceAtLeast(1),
+                    )
+                }
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            }
+        }
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        val longestEdge = maxOf(options.outWidth, options.outHeight)
+        if (longestEdge <= 0) throw IOException("Invalid image")
+        options.inJustDecodeBounds = false
+        options.inSampleSize = 1
+        while (longestEdge / options.inSampleSize > PHOTO_MAX_EDGE) options.inSampleSize *= 2
+        return contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+            ?: throw IOException("Invalid image")
+    }
+
+    private fun analyzePhoto(uri: Uri, city: String, captured: File? = null) {
+        sendAiScript("showLoading('Fotoğraf hazırlanıyor...')")
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val bytes = file?.inputStream()?.use(::readLimitedAi) ?: throw IOException("Fotoğraf bulunamadı")
-                if (bytes.isEmpty()) throw IOException("Fotoğraf boş")
+                val bytes = try {
+                    val bitmap = decodeAnalysisPhoto(uri, captured)
+                    try {
+                        ByteArrayOutputStream().use { output ->
+                            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output)) throw IOException("Image encoding failed")
+                            output.toByteArray()
+                        }
+                    } finally {
+                        bitmap.recycle()
+                    }
+                } catch (e: IOException) {
+                    withContext(Dispatchers.Main) {
+                        sendAiScript("onAIError('Fotoğraf açılamadı. Başka bir görsel deneyin.')")
+                    }
+                    return@launch
+                }
+                withContext(Dispatchers.Main) { sendAiScript("showLoading('Fotoğraf yorumlanıyor...')") }
                 val inputContent = content {
                     blob("image/jpeg", bytes)
                     text("Bu fotoğrafı bir gezi notu için Türkçe yorumla. Görülen yer ve ayrıntılar hakkında emin olmadığın bilgileri kesin bilgi gibi yazma. Yanıtı BAŞLIK: ... ve İÇERİK: ... formatında ver.")
                 }
                 val summary = AiSummary.parse(aiModel().generateContent(inputContent).text, "Fotoğraf Yorumu")
                 withContext(Dispatchers.Main) {
-                    webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(summary.title)}, ${JSONObject.quote(summary.content)}, ${JSONObject.quote(city)})", null)
+                    sendAiScript("onAISummaryReady(${JSONObject.quote(summary.title)}, ${JSONObject.quote(summary.content)}, ${JSONObject.quote(city)})")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("SehirNotlari", "Photo AI failed error=${e.javaClass.simpleName}")
-                withContext(Dispatchers.Main) { webView.evaluateJavascript("onAIError('Fotoğraf yorumlanamadı. Yeniden deneyin.')", null) }
-            } finally { file?.delete() }
+                withContext(Dispatchers.Main) { sendAiScript("onAIError('Fotoğraf yorumlanamadı. Bağlantınızı ve Gemini ayarlarını kontrol edin.')") }
+            } finally { captured?.delete() }
         }
     }
 
@@ -452,6 +516,8 @@ class MainActivity : AppCompatActivity() {
                     releaseUpdater.onWebViewReady()
                     pageReady = true
                     pendingFileScript?.let { pendingFileScript = null; webView.evaluateJavascript(it, null) }
+                    pendingAiScripts.forEach { webView.evaluateJavascript(it, null) }
+                    pendingAiScripts.clear()
                 }
             }
         }
@@ -1233,7 +1299,6 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun startMultiModalRecording() {
             if (refuseWithoutAi()) return
-            photoOnly = false
             val cameraPermission = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA)
             val micPermission = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO)
             
@@ -1247,12 +1312,29 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun startPhotoAnalysis(city: String) {
             if (refuseWithoutAi()) return
-            photoCity = city
-            photoOnly = true
-            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                runOnUiThread { photoPermissionLauncher.launch(Manifest.permission.CAMERA) }
-            } else {
-                runOnUiThread { takePhotoForMultiModal() }
+            runOnUiThread {
+                if (photoCity != null || cameraPending) return@runOnUiThread
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Fotoğraf kaynağı")
+                    .setItems(arrayOf("Kamerayla çek", "Galeriden seç")) { _, which ->
+                        photoCity = city
+                        if (which == 0) {
+                            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                                takePhotoForMultiModal()
+                            } else {
+                                photoPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        } else {
+                            try {
+                                photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            } catch (e: ActivityNotFoundException) {
+                                photoCity = null
+                                sendAiScript("onAIError('Fotoğraf seçici açılamadı.')")
+                            }
+                        }
+                    }
+                    .setNegativeButton("Vazgeç", null)
+                    .show()
             }
         }
 

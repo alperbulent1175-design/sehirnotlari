@@ -7,11 +7,41 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.InetSocketAddress
 import java.nio.file.Files
+import kotlin.io.encoding.Base64
 
 class PdfGeminiClientTest {
+    @Test fun sendsSmallPdfInlineAndOmitsThoughtParts() {
+        val file = Files.createTempFile("pdf-inline-test", ".pdf").toFile()
+        file.writeText("%PDF-1.7 test")
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        var requestPath = ""
+        var requestBody = ""
+        server.createContext("/") { exchange ->
+            requestPath = exchange.requestURI.path
+            requestBody = exchange.requestBody.bufferedReader().use { it.readText() }
+            val response = """{"candidates":[{"content":{"parts":[{"text":"hidden","thought":true},{"text":"BAŞLIK: Test İÇERİK: Özet"}]}}]}""".toByteArray()
+            exchange.sendResponseHeaders(200, response.size.toLong())
+            exchange.responseBody.use { it.write(response) }
+            exchange.close()
+        }
+        server.start()
+        try {
+            val stages = mutableListOf<String>()
+            val client = PdfGeminiClient("test-key", "http://127.0.0.1:${server.address.port}")
+            assertEquals("BAŞLIK: Test İÇERİK: Özet", client.summarize(file, "Özetle", onStage = stages::add))
+            assertEquals(listOf("summarizing"), stages)
+            assertEquals("/v1beta/models/gemini-3.5-flash-lite:generateContent", requestPath)
+            val parts = JSONObject(requestBody).getJSONArray("contents").getJSONObject(0).getJSONArray("parts")
+            val data = parts.getJSONObject(0).getJSONObject("inline_data")
+            assertEquals("application/pdf", data.getString("mime_type"))
+            assertEquals(Base64.encode(file.readBytes()), data.getString("data"))
+            assertEquals("Özetle", parts.getJSONObject(1).getString("text"))
+        } finally { server.stop(0); file.delete() }
+    }
+
     @Test fun streamsPdfThenSummarizesAndDeletesRemoteFile() {
         val file = Files.createTempFile("pdf-gemini-test", ".pdf").toFile()
-        file.writeBytes("%PDF-".toByteArray() + ByteArray(256 * 1024) { 7 })
+        file.writeBytes("%PDF-".toByteArray() + ByteArray(PdfGeminiClient.INLINE_LIMIT_BYTES.toInt()) { 7 })
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         val events = mutableListOf<String>()
         var uploaded = 0
@@ -33,7 +63,7 @@ class PdfGeminiClientTest {
                         .put("state", "ACTIVE")
                         .put("uri", "https://generativelanguage.googleapis.com/v1beta/files/test")).toString()
                 }
-                "/v1beta/models/gemini-3.8-flash:generateContent" -> {
+                "/v1beta/models/gemini-3.5-flash-lite:generateContent" -> {
                     prompt = JSONObject(String(body)).getJSONArray("contents").getJSONObject(0)
                         .getJSONArray("parts").getJSONObject(1).getString("text")
                     """{"candidates":[{"content":{"parts":[{"text":"BAŞLIK: Test\\nİÇERİK: Özet"}]}}]}"""
