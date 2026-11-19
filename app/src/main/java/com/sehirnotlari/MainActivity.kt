@@ -1413,18 +1413,21 @@ class MainActivity : AppCompatActivity() {
             if (!CloudScripts.REQUEST_ID.matches(requestId)) return
             cloudScope.launch {
                 runCloud("backup", requestId) {
-                    val source = if (roomFirst.isOn()) {
+                    val (source, deleted) = if (roomFirst.isOn()) {
                         val before = roomFirstOutbox.read() ?: "[]"
                         if (JSONArray(before).length() != 0) throw CloudBackupException("Bekleyen not kayıtları tamamlanınca yeniden yedekleyin.")
                         val snapshot = roomFirstWriter.snapshot()
                         val after = roomFirstOutbox.read() ?: "[]"
                         if (JSONArray(after).length() != 0) throw CloudBackupException("Bekleyen not kayıtları tamamlanınca yeniden yedekleyin.")
-                        snapshot.legacyNotesJson()
-                    } else notesJson
+                        val tombstones = snapshot.rows.mapNotNull { row ->
+                            row.deletedAt?.let { DeletedNote(row.city, row.id.removePrefix("${row.city}::"), it) }
+                        }
+                        snapshot.legacyNotesJson() to tombstones
+                    } else notesJson to roomDeletionRecords()
                     LegacyRoomImporter.oversizedPayloadMessage(source)?.let {
                         throw CloudBackupException("Notlar bulut yedeği için çok büyük; JSON dosyasına yedekleyin.")
                     }
-                    cloud.backup(source, roomDeletionRecords(), BuildConfig.VERSION_NAME, auto)
+                    cloud.backup(source, deleted, BuildConfig.VERSION_NAME, auto)
                 }
             }
         }
