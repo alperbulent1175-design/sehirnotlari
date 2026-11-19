@@ -1029,6 +1029,7 @@ class MainActivity : AppCompatActivity() {
         /** Returns null only when no native outbox exists; errors block Room-first startup. */
         @JavascriptInterface
         fun readRoomFirstOutbox(): String = try {
+            if (!BuildConfig.DEBUG || !roomFirst.isOn()) throw RoomBridgeFailure(ROOM_FIRST_OFF)
             org.json.JSONObject().put("ok", true).put("body", roomFirstOutbox.read()).toString()
         } catch (e: Exception) {
             Log.e(ROOM_LOG, "room-first outbox read failed error=${RoomBridgeErrors.safe(e)}")
@@ -1038,6 +1039,7 @@ class MainActivity : AppCompatActivity() {
         /** AtomicFile.finishWrite syncs the intent before the Room request is sent. */
         @JavascriptInterface
         fun writeRoomFirstOutbox(body: String): Boolean = try {
+            if (!BuildConfig.DEBUG || !roomFirst.isOn()) throw RoomBridgeFailure(ROOM_FIRST_OFF)
             roomFirstOutbox.write(body)
             true
         } catch (e: Exception) {
