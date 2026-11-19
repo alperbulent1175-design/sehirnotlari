@@ -9,7 +9,7 @@ Android uygulaması: Kotlin WebView kabuğu, yerel HTML/JavaScript arayüzü, ş
 - Firebase yapılandırması yokken bulut yedeği devre dışı kalır. `app/google-services.json` yerel dosyadır ve depoya eklenmez.
 - Yapay zekâ özellikleri için Android uygulamasında Ayarlar → Akıllı özellikler bölümüne kendi Gemini API anahtarınızı girin. Anahtar Android Keystore ile cihazda şifrelenir, yedeklere dahil edilmez ve uygulama içinden okunamaz; kaldırılabilir. PDF, ses, fotoğraf ve şehir rehberi istekleri Google Gemini hizmetine gönderilir. Kota ve ücretler anahtar sahibine aittir. Anahtar olmadan özellikler kapalıdır.
 - Geliştirme derlemesinde `local.properties` içindeki `GEMINI_API_KEY` geçici olarak kullanılabilir. Yayın derlemesine bu anahtar gömülmez. Ortak kullanıma açık, uygulama tarafından finanse edilen AI hizmeti için sunucu tarafı proxy ve kota denetimi gerekir.
-- PDF özetleri Gemini 3.8 Flash, sesli not, fotoğraf ve ses analizi ile şehir rehberi Gemini 2.5 Flash kullanır. PDF modelinin gerçek anahtarla cihazda uçtan uca doğrulanması [AI doğrulama işinde](https://github.com/alperbulent1175-design/sehirnotlari/issues/7) izlenir.
+- PDF özetleri Gemini 3.8 Flash; sesli not, yalnız fotoğraf yorumu, fotoğraf ve ses analizi ile şehir rehberi Gemini 2.5 Flash kullanır. AI akışlarının gerçek anahtarla cihazda uçtan uca doğrulanması [AI doğrulama işinde](https://github.com/alperbulent1175-design/sehirnotlari/issues/7) izlenir.
 - Firestore kural testleri: `cd firebase && npm ci && npm test` (Firebase emülatörleri gerekir).
 
 ## Veri

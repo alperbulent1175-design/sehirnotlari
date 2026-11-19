@@ -24,7 +24,7 @@ class BridgeSecurityTest {
                 "reconcileRoomNotes", "requestDataSafetyStatus", "requestReminderPermission", "requestRoomNotes", "restoreRoomNotes", "resumeRoomImports", "retryUpdate", "roomFirstMode",
                 "roomFirstSwitch", "saveAiApiKey", "saveNotesToRoom", "scheduleReminder", "setAutoDownloadUpdates", "setPrereleaseUpdates",
                 "shareNote", "startMultiModalRecording",
-                "startRecording", "stopMultiModalRecording", "stopRecording", "undoRoomResolution", "updaterSettings", "upsertRoomNote",
+                "startPhotoAnalysis", "startRecording", "stopMultiModalRecording", "stopRecording", "undoRoomResolution", "updaterSettings", "upsertRoomNote",
                 "writeRoomFirst",
             ),
             exposed
@@ -37,6 +37,7 @@ class BridgeSecurityTest {
         assertEquals(listOf("String"), params["saveAiApiKey"])
         assertEquals(emptyList<String>(), params["clearAiApiKey"])
         assertEquals(emptyList<String>(), params["aiAvailable"])
+        assertEquals(listOf("String"), params["startPhotoAnalysis"])
         assertFalse(bridge.declaredMethods.any { it.isAnnotationPresent(JavascriptInterface::class.java) && it.name.contains("getAi", ignoreCase = true) })
     }
 

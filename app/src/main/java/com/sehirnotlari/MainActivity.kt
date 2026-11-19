@@ -42,6 +42,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -147,6 +148,8 @@ class MainActivity : AppCompatActivity() {
     private var audioFile: File? = null
     private var photoFile: File? = null
     private var photoUri: Uri? = null
+    @Volatile private var photoOnly = false
+    @Volatile private var photoCity = ""
 
     private val aiKeyStore by lazy { AiApiKeyStore(applicationContext) }
     private val aiEnabled: Boolean get() = aiKeyStore.hasKey() || BuildConfig.GEMINI_API_KEY.isNotBlank()
@@ -191,12 +194,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val photoPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) takePhotoForMultiModal()
+        else webView.evaluateJavascript("onAIError('Kamera izni gerekli.')", null)
+    }
+
     private val cameraLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
-            // Fotoğraf çekildi, şimdi ses kaydını başlat
-            startRecordingInternal()
-            webView.evaluateJavascript("toast('Fotoğraf alındı, şimdi konuşun...')", null)
+            if (photoOnly) {
+                photoOnly = false
+                analyzePhoto(photoCity)
+            } else {
+                startRecordingInternal()
+                webView.evaluateJavascript("toast('Fotoğraf alındı, şimdi konuşun...')", null)
+            }
         } else {
+            photoOnly = false
+            photoFile?.delete()
             webView.evaluateJavascript("toast('Fotoğraf çekimi iptal edildi')", null)
         }
     }
@@ -308,19 +322,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun takePhotoForMultiModal() {
-        val storageDir = externalCacheDir
-        photoFile = File.createTempFile("temp_photo", ".jpg", storageDir)
-        photoUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", photoFile!!)
-
-        val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
-            putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
+        try {
+            photoFile = File.createTempFile("temp_photo", ".jpg", cacheDir)
+            val captureUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", photoFile!!)
+            photoUri = captureUri
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, captureUri)
+                clipData = ClipData.newUri(contentResolver, "photo", captureUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }
+            cameraLauncher.launch(intent)
+        } catch (e: Exception) {
+            photoOnly = false
+            photoFile?.delete()
+            Log.e("SehirNotlari", "Photo capture failed error=${e.javaClass.simpleName}")
+            webView.evaluateJavascript("onAIError('Kamera açılamadı.')", null)
         }
-        cameraLauncher.launch(intent)
+    }
+
+    private fun analyzePhoto(city: String) {
+        webView.evaluateJavascript("showLoading('Fotoğraf yorumlanıyor...')", null)
+        val file = photoFile
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val bytes = file?.inputStream()?.use(::readLimitedAi) ?: throw IOException("Fotoğraf bulunamadı")
+                if (bytes.isEmpty()) throw IOException("Fotoğraf boş")
+                val inputContent = content {
+                    blob("image/jpeg", bytes)
+                    text("Bu fotoğrafı bir gezi notu için Türkçe yorumla. Görülen yer ve ayrıntılar hakkında emin olmadığın bilgileri kesin bilgi gibi yazma. Yanıtı BAŞLIK: ... ve İÇERİK: ... formatında ver.")
+                }
+                val summary = AiSummary.parse(aiModel().generateContent(inputContent).text, "Fotoğraf Yorumu")
+                withContext(Dispatchers.Main) {
+                    webView.evaluateJavascript("onAISummaryReady(${JSONObject.quote(summary.title)}, ${JSONObject.quote(summary.content)}, ${JSONObject.quote(city)})", null)
+                }
+            } catch (e: Exception) {
+                Log.e("SehirNotlari", "Photo AI failed error=${e.javaClass.simpleName}")
+                withContext(Dispatchers.Main) { webView.evaluateJavascript("onAIError('Fotoğraf yorumlanamadı. Yeniden deneyin.')", null) }
+            } finally { file?.delete() }
+        }
     }
 
     private fun startRecordingInternal() {
         try {
-            audioFile = File(externalCacheDir, "temp_voice.m4a")
+            audioFile = File(cacheDir, "temp_voice.m4a")
             mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(this) else MediaRecorder()
             mediaRecorder?.apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
@@ -1107,23 +1151,36 @@ class MainActivity : AppCompatActivity() {
         fun startRecording() {
             if (refuseWithoutAi()) return
             if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                runOnUiThread { micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
                 return
             }
-            startRecordingInternal()
+            runOnUiThread { startRecordingInternal() }
         }
 
         @JavascriptInterface
         fun startMultiModalRecording() {
             if (refuseWithoutAi()) return
+            photoOnly = false
             val cameraPermission = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA)
             val micPermission = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO)
             
             if (cameraPermission != PackageManager.PERMISSION_GRANTED || micPermission != PackageManager.PERMISSION_GRANTED) {
-                multimodalPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+                runOnUiThread { multimodalPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)) }
                 return
             }
-            takePhotoForMultiModal()
+            runOnUiThread { takePhotoForMultiModal() }
+        }
+
+        @JavascriptInterface
+        fun startPhotoAnalysis(city: String) {
+            if (refuseWithoutAi()) return
+            photoCity = city
+            photoOnly = true
+            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                runOnUiThread { photoPermissionLauncher.launch(Manifest.permission.CAMERA) }
+            } else {
+                runOnUiThread { takePhotoForMultiModal() }
+            }
         }
 
         @JavascriptInterface

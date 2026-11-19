@@ -251,7 +251,7 @@ class RoomMigrationGuardTest {
         assertTrue(gradle.substringAfter("defaultConfig {").substringBefore("buildTypes {").contains("buildConfigField(\"String\", \"GEMINI_API_KEY\", \"\\\"\\\"\")"))
         assertTrue(gradle.substringAfter("debug {").substringBefore("release {").contains("buildConfigField(\"String\", \"GEMINI_API_KEY\", \"\\\"\$geminiApiKey\\\"\")"))
         assertTrue(activity.contains("fun aiAvailable(): Boolean = aiEnabled"))
-        listOf("fun startRecording()", "fun startMultiModalRecording()", "fun pickPDF(city: String)").forEach { name ->
+        listOf("fun startRecording()", "fun startMultiModalRecording()", "fun startPhotoAnalysis(city: String)", "fun pickPDF(city: String)").forEach { name ->
             val body = activity.substringAfter(name).substringBefore("@JavascriptInterface")
             assertTrue("$name is not gated", Regex("""^\s*\{\s*if \(refuseWithoutAi\(\)\) return""").containsMatchIn(body))
         }
@@ -259,7 +259,7 @@ class RoomMigrationGuardTest {
         assertTrue(guide.indexOf("if (!aiEnabled)") in 0 until guide.indexOf("generateContent"))
         assertFalse(guide.contains("e.message"))
         val html = sourceFile("src/main/assets/index.html").readText()
-        listOf("'pdfBtn').onclick", "'multiBtn').onclick", "'micBtn').onclick", "function pickPDF()").forEach { handler ->
+        listOf("'pdfBtn').onclick", "'photoBtn').onclick", "'multiBtn').onclick", "'micBtn').onclick", "function pickPDF()").forEach { handler ->
             assertTrue("$handler is not gated", html.substringAfter(handler).substringBefore("\n}").contains("aiOff()"))
         }
     }
