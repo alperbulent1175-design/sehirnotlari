@@ -18,7 +18,7 @@ jobs:
       - working-directory: ios
         run: |
           xcodegen generate
-          xcodebuild -project SehirNotlari.xcodeproj -scheme SehirNotlari -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedData build CODE_SIGNING_ALLOWED=NO build
+          xcodebuild -project SehirNotlari.xcodeproj -scheme SehirNotlari -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
           test -f build/Build/Products/Debug-iphonesimulator/SehirNotlari.app/assets/index.html
           ditto -c -k --keepParent build/Build/Products/Debug-iphonesimulator/SehirNotlari.app sehir-notlari-simulator.zip
       - uses: actions/upload-artifact@v4
