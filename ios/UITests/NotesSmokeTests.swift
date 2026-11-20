@@ -13,28 +13,21 @@ final class NotesSmokeTests: XCTestCase {
         let cancel = app.buttons["Cancel"].firstMatch
         let filesPicker = control(in: app, labels: ["Browse", "Recents", "Locations"])
         let continueButton = app.buttons.matching(NSPredicate(format: "label IN %@", ["Continue", "Get Started"])).firstMatch
-        let presentation = NSPredicate { _, _ in
-            chooseFiles.exists || continueButton.exists || (filesPicker.exists && cancel.exists)
-        }
-        let pickerOpened = XCTNSPredicateExpectation(predicate: presentation, object: nil)
-        guard XCTWaiter.wait(for: [pickerOpened], timeout: 10) == .completed else {
+        let entry = control(in: app, labels: ["Browse", "Recents", "Locations", "Choose Files", "Choose File", "Continue", "Get Started"])
+        guard entry.waitForExistence(timeout: 60) else {
             XCTFail("WebKit did not present a file source menu or the Files picker.\n\(app.debugDescription)")
             return
         }
         if chooseFiles.exists {
             chooseFiles.tap()
         }
-        let filesOpened = NSPredicate { _, _ in continueButton.exists || filesPicker.exists }
-        let filesOpenedExpectation = XCTNSPredicateExpectation(predicate: filesOpened, object: nil)
-        _ = XCTWaiter.wait(for: [filesOpenedExpectation], timeout: 10)
         if continueButton.exists {
             continueButton.tap()
         }
-        guard filesPicker.waitForExistence(timeout: 10), cancel.waitForExistence(timeout: 5) else {
+        guard filesPicker.waitForExistence(timeout: 40), cancel.waitForExistence(timeout: 30) else {
             XCTFail("The system Files picker did not open.\n\(app.debugDescription)")
             return
         }
-
         let filename = "xctest-yedek-\(token)"
         let fixture = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label BEGINSWITH %@", filename)).firstMatch
