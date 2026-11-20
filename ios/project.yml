@@ -20,3 +20,21 @@ targets:
         SWIFT_VERSION: "5.0"
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
+  SehirNotlariUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: SehirNotlari
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+schemes:
+  SehirNotlari:
+    build:
+      targets:
+        SehirNotlari: all
+        SehirNotlariUITests: [test]
+    test:
+      targets: [SehirNotlariUITests]

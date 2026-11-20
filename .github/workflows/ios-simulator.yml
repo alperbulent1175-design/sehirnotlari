@@ -18,7 +18,11 @@ jobs:
       - working-directory: ios
         run: |
           xcodegen generate
-          xcodebuild -project SehirNotlari.xcodeproj -scheme SehirNotlari -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+          device=$(xcrun simctl list devices booted available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid // empty')
+          if [ -z "$device" ]; then
+            device=$(xcrun simctl list devices available -j | jq -er '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+          fi
+          xcodebuild -project SehirNotlari.xcodeproj -scheme SehirNotlari -destination "platform=iOS Simulator,id=$device" -derivedDataPath build -parallel-testing-enabled NO -resultBundlePath SmokeTests.xcresult CODE_SIGNING_ALLOWED=NO test
           test -f build/Build/Products/Debug-iphonesimulator/SehirNotlari.app/assets/index.html
           ditto -c -k --keepParent build/Build/Products/Debug-iphonesimulator/SehirNotlari.app sehir-notlari-simulator.zip
       - uses: actions/upload-artifact@v4
@@ -26,3 +30,8 @@ jobs:
           name: sehir-notlari-ios-simulator
           path: ios/sehir-notlari-simulator.zip
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-smoke-test-results
+          path: ios/SmokeTests.xcresult
