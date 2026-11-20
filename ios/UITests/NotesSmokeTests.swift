@@ -143,9 +143,14 @@ final class NotesSmokeTests: XCTestCase {
 
     private func openBackup(_ web: XCUIElement) {
         let backup = web.buttons["Yedek"]
+        XCTAssertTrue(web.buttons["Haritayı yakınlaştır"].waitForExistence(timeout: 30))
         XCTAssertTrue(waitUntilHittable(backup))
         backup.tap()
-        XCTAssertTrue(waitUntilHittable(web.buttons["Dosya Seç"]))
+        let choose = web.buttons["Dosya Seç"]
+        if !choose.waitForExistence(timeout: 5) {
+            backup.tap()
+        }
+        XCTAssertTrue(waitUntilHittable(choose))
     }
 
     func testMapAndBackupScreensLoad() {
