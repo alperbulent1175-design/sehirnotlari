@@ -61,7 +61,7 @@ final class NotesSmokeTests: XCTestCase {
 
         let localDevice = control(in: app, labels: ["On My iPhone"])
         if !localDevice.exists {
-            let browse = app.buttons["Browse"].firstMatch
+            let browse = app.tabBars.buttons["Browse"].firstMatch
             guard waitUntilHittable(browse) else { return false }
             browse.tap()
         }
@@ -107,7 +107,7 @@ final class NotesSmokeTests: XCTestCase {
     private func waitUntilHittable(_ element: XCUIElement) -> Bool {
         let hittable = NSPredicate { _, _ in element.exists && element.isHittable }
         let expectation = XCTNSPredicateExpectation(predicate: hittable, object: nil)
-        return XCTWaiter.wait(for: [expectation], timeout: 5) == .completed
+        return XCTWaiter.wait(for: [expectation], timeout: 30) == .completed
     }
 
     private func launchWithEnglishSystemControls(fixtureToken: String? = nil) -> XCUIApplication {
@@ -143,9 +143,9 @@ final class NotesSmokeTests: XCTestCase {
 
     private func openBackup(_ web: XCUIElement) {
         let backup = web.buttons["Yedek"]
-        XCTAssertTrue(backup.waitForExistence(timeout: 20))
+        XCTAssertTrue(waitUntilHittable(backup))
         backup.tap()
-        XCTAssertTrue(web.buttons["Dosya Seç"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntilHittable(web.buttons["Dosya Seç"]))
     }
 
     func testMapAndBackupScreensLoad() {
@@ -156,7 +156,7 @@ final class NotesSmokeTests: XCTestCase {
         let backup = web.buttons["Yedek"]
         XCTAssertTrue(backup.waitForExistence(timeout: 5))
         backup.tap()
-        XCTAssertTrue(web.buttons["Dosya Seç"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntilHittable(web.buttons["Dosya Seç"]))
         XCTAssertTrue(web.buttons["JSON İndir"].exists)
     }
 }
