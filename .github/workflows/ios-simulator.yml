@@ -56,7 +56,7 @@ jobs:
           test -s "$app/Assets.car"
           test "$(plutil -extract CFBundleIdentifier raw "$app/Info.plist")" = com.sehirnotlari.ios
           test "$(plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw "$app/Info.plist")" = AppIcon
-          xcrun lipo -verify_arch arm64 "$app/SehirNotlari"
+          xcrun lipo "$app/SehirNotlari" -verify_arch arm64
           if grep -aFq -- '--ui-test-import-fixture' "$app/SehirNotlari"; then
             echo 'The Release executable includes the Debug import fixture.' >&2
             exit 1

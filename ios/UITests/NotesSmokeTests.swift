@@ -36,7 +36,8 @@ final class NotesSmokeTests: XCTestCase {
         }
 
         let filename = "xctest-yedek-\(token)"
-        let fixture = control(in: app, labels: [filename, "\(filename).json"])
+        let fixture = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", filename)).firstMatch
         guard openFixture(fixture, in: app) else {
             XCTFail("The synthetic JSON was not accessible through Files.\n\(app.debugDescription)")
             return
@@ -67,7 +68,8 @@ final class NotesSmokeTests: XCTestCase {
         guard waitUntilHittable(localDevice) else { return false }
         localDevice.tap()
 
-        let appFolder = control(in: app, labels: ["Şehir Notları", "SehirNotlari"])
+        let appFolder = app.collectionViews.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "Şehir Notları", "SehirNotlari")).firstMatch
         guard waitUntilHittable(appFolder) else { return false }
         appFolder.tap()
 
