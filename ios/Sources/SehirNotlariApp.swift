@@ -28,6 +28,7 @@ final class NotesController: UIViewController, WKNavigationDelegate, WKScriptMes
             forMainFrameOnly: true
         ))
         #if DEBUG
+        prepareSystemImportFixture()
         if ProcessInfo.processInfo.arguments.contains("--ui-test-import-fixture") {
             configuration.userContentController.addUserScript(WKUserScript(
                 source: """
@@ -56,6 +57,27 @@ final class NotesController: UIViewController, WKNavigationDelegate, WKScriptMes
         view = webView
         webView.loadFileURL(assets.appendingPathComponent("index.html"), allowingReadAccessTo: assets)
     }
+
+    #if DEBUG
+    private func prepareSystemImportFixture() {
+        let fileManager = FileManager.default
+        guard let value = ProcessInfo.processInfo.environment["SEHIR_NOTLARI_SYSTEM_IMPORT_FIXTURE"],
+              let token = UUID(uuidString: value),
+              let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+
+        let filename = "xctest-yedek-\(token.uuidString).json"
+        let noteID = Int(Date().timeIntervalSince1970 * 1_000)
+        let json = """
+        {"Ankara":[{"id":\(noteID),"title":"Sistem dosya seçici denemesi","content":"Sentetik Android yedeği","date":"20.11.2026"}]}
+        """
+        do {
+            try fileManager.createDirectory(at: documents, withIntermediateDirectories: true)
+            try Data(json.utf8).write(to: documents.appendingPathComponent(filename), options: .atomic)
+        } catch {
+            NSLog("Could not write the system picker test fixture: %@", error.localizedDescription)
+        }
+    }
+    #endif
 
     func webView(
         _ webView: WKWebView,

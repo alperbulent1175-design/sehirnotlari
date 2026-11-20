@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - run: brew install xcodegen
@@ -35,3 +35,35 @@ jobs:
         with:
           name: ios-smoke-test-results
           path: ios/SmokeTests.xcresult
+  device-archive:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: Build and inspect iPhone release archive
+        working-directory: ios
+        run: |
+          xcode=$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' | grep -E '/Xcode_26([.][0-9]+)*[.]app$' | sort -V | tail -1)
+          test -n "$xcode"
+          export DEVELOPER_DIR="$xcode/Contents/Developer"
+          xcodebuild -version
+          xcodegen generate
+          archive="$RUNNER_TEMP/SehirNotlari.xcarchive"
+          xcodebuild -project SehirNotlari.xcodeproj -scheme SehirNotlari -configuration Release -destination 'generic/platform=iOS' -archivePath "$archive" CODE_SIGNING_ALLOWED=NO archive
+          app="$archive/Products/Applications/SehirNotlari.app"
+          test -s "$app/assets/index.html"
+          test -s "$app/Assets.car"
+          test "$(plutil -extract CFBundleIdentifier raw "$app/Info.plist")" = com.sehirnotlari.ios
+          test "$(plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw "$app/Info.plist")" = AppIcon
+          xcrun lipo -verify_arch arm64 "$app/SehirNotlari"
+          if grep -aFq -- '--ui-test-import-fixture' "$app/SehirNotlari"; then
+            echo 'The Release executable includes the Debug import fixture.' >&2
+            exit 1
+          fi
+          ditto -c -k --keepParent "$archive" "$RUNNER_TEMP/sehir-notlari-unsigned-device.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sehir-notlari-unsigned-device-archive
+          path: ${{ runner.temp }}/sehir-notlari-unsigned-device.zip
+          if-no-files-found: error
