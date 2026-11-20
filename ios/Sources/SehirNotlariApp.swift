@@ -27,8 +27,31 @@ final class NotesController: UIViewController, WKNavigationDelegate, WKScriptMes
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
-        webView = WKWebView(frame: .zero, configuration: configuration)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-import-fixture") {
+            configuration.userContentController.addUserScript(WKUserScript(
+                source: """
+                const input = document.getElementById('restoreFile');
+                input.addEventListener('click', event => {
+                    event.preventDefault();
+                    const file = new File(
+                        ['{"Ankara":[{"id":20261120,"title":"iOS yedek denemesi","content":"Android JSON","date":"20.11.2026"}]}'],
+                        'android-yedek.json',
+                        {type: 'application/json'}
+                    );
+                    const files = new DataTransfer();
+                    files.items.add(file);
+                    input.files = files.files;
+                    input.dispatchEvent(new Event('change', {bubbles: true}));
+                });
+                """,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            ))
+        }
+        #endif
         configuration.userContentController.add(ExportHandler(owner: self), name: "exportNotes")
+        webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
         view = webView
         webView.loadFileURL(assets.appendingPathComponent("index.html"), allowingReadAccessTo: assets)
