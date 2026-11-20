@@ -1,0 +1,22 @@
+name: SehirNotlari
+options:
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  SehirNotlari:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+      - path: ../app/src/main/assets
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sehirnotlari.ios
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Şehir Notları
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        SWIFT_VERSION: "5.0"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"

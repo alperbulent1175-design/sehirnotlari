@@ -1,0 +1,28 @@
+name: iOS simulator
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/ios-*']
+    paths: ['ios/**', 'app/src/main/assets/**', '.github/workflows/ios-simulator.yml']
+  pull_request:
+    paths: ['ios/**', 'app/src/main/assets/**', '.github/workflows/ios-simulator.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - working-directory: ios
+        run: |
+          xcodegen generate
+          xcodebuild -project SehirNotlari.xcodeproj -scheme SehirNotlari -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedData build CODE_SIGNING_ALLOWED=NO build
+          test -f build/Build/Products/Debug-iphonesimulator/SehirNotlari.app/assets/index.html
+          ditto -c -k --keepParent build/Build/Products/Debug-iphonesimulator/SehirNotlari.app sehir-notlari-simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sehir-notlari-ios-simulator
+          path: ios/sehir-notlari-simulator.zip
+          if-no-files-found: error

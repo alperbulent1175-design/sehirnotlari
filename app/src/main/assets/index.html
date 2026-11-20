@@ -2242,6 +2242,8 @@ const androidFiles=()=>!!(window.Android&&typeof window.Android.exportNotesFile=
 function fileStatus(id,msg,kind){const el=document.getElementById(id);el.textContent=msg;el.dataset.kind=kind||'';}
 function exportJSON(){
   const text=JSON.stringify(DB,null,2);exportCount=NotesFile.count(DB);
+  const iosExport=window.webkit?.messageHandlers?.exportNotes;
+  if(iosExport){iosExport.postMessage(text);return;}
   if(androidFiles()){
     if(exportBusy)return;
     exportBusy=true;fileStatus('exportStatus','Kaydetme ekranı açılıyor…');
